@@ -1,0 +1,5 @@
+{
+  "name": "Cubirds Web",
+  "description": "A digital adaptation of the card game Cubirds. Play locally with friends or challenge a Gemini-powered AI.",
+  "requestFramePermissions": []
+}
