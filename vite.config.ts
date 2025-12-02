@@ -21,10 +21,3 @@ export default defineConfig(({ mode }) => {
       }
     };
 });
-import { defineConfig } from 'vite'
-import react from '@vitejs/plugin-react'
-
-export default defineConfig({
-  plugins: [react()],
-  base: './'   // ⚠️ 确保静态资源路径正确，防止 Vercel 白屏
-})
