@@ -1,4 +1,3 @@
-
 import React from 'react';
 import { BirdType } from '../types';
 import { BIRD_DATA } from '../constants';
@@ -12,7 +11,7 @@ interface CardProps {
   isGhost?: boolean; 
   isDimmed?: boolean; 
   isStackPlaceholder?: boolean;
-  isFaceDown?: boolean; // NEW: Render card back
+  isFaceDown?: boolean; 
   onDragStart?: (e: React.DragEvent) => void;
 }
 
@@ -30,18 +29,26 @@ export const Card: React.FC<CardProps> = ({
 }) => {
   const bird = BIRD_DATA[type];
   
-  // Define a rich, full-card color palette
+  // Define a rich, pastel/earthy color palette
   const getPalette = (bgClass: string) => {
     switch (bgClass) {
-      case 'bg-green-500': return { base: 'bg-green-100', border: 'border-green-400', text: 'text-green-800' };
-      case 'bg-indigo-600': return { base: 'bg-indigo-100', border: 'border-indigo-400', text: 'text-indigo-900' };
-      case 'bg-pink-500': return { base: 'bg-pink-100', border: 'border-pink-400', text: 'text-pink-900' };
-      case 'bg-orange-500': return { base: 'bg-orange-100', border: 'border-orange-400', text: 'text-orange-900' };
-      case 'bg-yellow-400': return { base: 'bg-yellow-100', border: 'border-yellow-400', text: 'text-yellow-900' };
-      case 'bg-slate-700': return { base: 'bg-slate-200', border: 'border-slate-400', text: 'text-slate-900' };
-      case 'bg-emerald-600': return { base: 'bg-emerald-100', border: 'border-emerald-400', text: 'text-emerald-900' };
-      case 'bg-blue-500': return { base: 'bg-blue-100', border: 'border-blue-400', text: 'text-blue-900' };
-      case 'bg-red-500': return { base: 'bg-red-100', border: 'border-red-400', text: 'text-red-900' };
+      // Parrot (Green) -> Soft Mint/Sage
+      case 'bg-emerald-400': return { base: 'bg-[#A7F3D0]', border: 'border-[#34D399]', text: 'text-[#065F46]' };
+      // Owl (Purple) -> Soft Lavender
+      case 'bg-violet-400': return { base: 'bg-[#DDD6FE]', border: 'border-[#A78BFA]', text: 'text-[#5B21B6]' };
+      // Flamingo (Pink) -> Soft Rose
+      case 'bg-rose-400': return { base: 'bg-[#FECDD3]', border: 'border-[#FB7185]', text: 'text-[#9F1239]' };
+      // Toucan (Orange) -> Soft Peach
+      case 'bg-orange-400': return { base: 'bg-[#FED7AA]', border: 'border-[#FB923C]', text: 'text-[#9A3412]' };
+      // Duck (Yellow) -> Soft Cream/Yellow
+      case 'bg-yellow-400': return { base: 'bg-[#FEF08A]', border: 'border-[#FACC15]', text: 'text-[#854D0E]' };
+      // Magpie (Grey) -> Soft Stone
+      case 'bg-stone-400': return { base: 'bg-[#E7E5E4]', border: 'border-[#A8A29E]', text: 'text-[#44403C]' };
+      // Reed Warbler (Blue) -> Soft Sky
+      case 'bg-sky-400': return { base: 'bg-[#BAE6FD]', border: 'border-[#38BDF8]', text: 'text-[#075985]' };
+      // Robin (Brown) -> Soft Tan/Sienna
+      case 'bg-amber-600': return { base: 'bg-[#E7CBA9]', border: 'border-[#D97706]', text: 'text-[#78350F]' }; // Custom pastel brown
+      
       default: return { base: 'bg-gray-100', border: 'border-gray-300', text: 'text-gray-900' };
     }
   };
@@ -51,6 +58,9 @@ export const Card: React.FC<CardProps> = ({
   // Interaction classes
   const cursorClass = onClick ? 'cursor-pointer' : 'cursor-default';
   const dragClass = onDragStart && !isFaceDown ? 'cursor-grab active:cursor-grabbing' : '';
+  
+  // Animation for entering (Drawing)
+  const animClass = !mini && !isGhost && !isStackPlaceholder ? 'animate-[bounceIn_0.4s_ease-out]' : '';
   
   // State styles
   const stateClasses = isGhost 
@@ -76,7 +86,7 @@ export const Card: React.FC<CardProps> = ({
     relative flex flex-col items-center
     transition-all duration-300 select-none overflow-hidden
     ${isFaceDown ? 'bg-stone-300 border-stone-400' : `${palette.border} ${stateClasses}`} 
-    ${cursorClass} ${dragClass} ${cardSizeClasses}
+    ${cursorClass} ${dragClass} ${cardSizeClasses} ${animClass}
   `;
 
   // --- Stack Placeholder Render ---
@@ -121,12 +131,12 @@ export const Card: React.FC<CardProps> = ({
         className={baseClasses}
         onClick={onClick}
       >
-        {/* Top Right: Flock Badge */}
+        {/* Flock Badge (Printed Effect) */}
         {!isGhost && (
             <div className={`
                 absolute top-2 right-3
                 text-[13px] font-black tracking-tighter
-                ${palette.text} leading-none select-none
+                ${palette.text} leading-none select-none opacity-80
             `}>
                 {bird.smallFlock}/{bird.bigFlock}
             </div>
@@ -147,12 +157,12 @@ export const Card: React.FC<CardProps> = ({
           )}
         </div>
 
-        {/* Bottom: Name */}
+        {/* Name (Printed Effect) */}
         {!isGhost && (
             <div className={`
                 absolute bottom-3 w-full text-center
                 text-[11px] font-black uppercase tracking-widest
-                ${palette.text} opacity-90 select-none
+                ${palette.text} opacity-80 select-none
             `}>
                 {bird.name}
             </div>

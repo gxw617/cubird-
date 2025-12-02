@@ -1,4 +1,3 @@
-
 import { BIRD_DATA, INITIAL_HAND_SIZE, INITIAL_ROW_CARDS, ROW_COUNT } from '../constants';
 import { BirdType, GameState, Player, MoveType, GameMove, MoveOutcome, TurnPhase } from '../types';
 
@@ -51,10 +50,6 @@ const dealHands = (state: GameState) => {
 export const initializeGame = (playerNames: string[], aiEnabled: boolean): GameState => {
   const deck = createDeck();
   const rows: BirdType[][] = Array.from({ length: ROW_COUNT }, () => []);
-  
-  // Deal initial rows
-  // Official Rule: Rows must have different species? Usually just random.
-  // But we must ensure the "2 distinct species" rule applies even at start.
   
   const initialState: GameState = {
     players: [],
@@ -182,26 +177,20 @@ export const applyMove = (state: GameState, move: GameMove): MoveOutcome => {
 
   // --- FLOCK ---
   if (move.type === MoveType.FLOCK) {
-    // Can only flock in Phase 2
     if (newState.turnPhase !== TurnPhase.FLOCK_OR_PASS) return outcome;
     if (!move.birdType) return outcome;
     
-    // Count birds of type in hand
     const handCount = player.hand.filter(b => b === move.birdType).length;
     const config = BIRD_DATA[move.birdType];
     
     let bankAmount = 0;
     if (handCount >= config.bigFlock) bankAmount = 2;
     else if (handCount >= config.smallFlock) bankAmount = 1;
-    else return outcome; // Invalid move
+    else return outcome; 
 
-    // Remove all from hand
     player.hand = player.hand.filter(b => b !== move.birdType);
-    
-    // Add to collection
     player.collection[move.birdType] = (player.collection[move.birdType] || 0) + bankAmount;
     
-    // Add rest to discard
     const discardCount = handCount - bankAmount;
     for(let i=0; i<discardCount; i++) newState.discardPile.push(move.birdType);
 
@@ -211,7 +200,6 @@ export const applyMove = (state: GameState, move: GameMove): MoveOutcome => {
     
     newState.lastActionLog.push(outcome.message);
     
-    // Check win immediately
     if (checkWinCondition(player)) {
       newState.winner = player.id;
       newState.status = 'GAME_OVER';
@@ -219,32 +207,25 @@ export const applyMove = (state: GameState, move: GameMove): MoveOutcome => {
       return outcome;
     }
 
-    // Check Round End immediately? 
-    // Rules: "A round ends immediately when a player has no cards in hand."
     if (player.hand.length === 0) {
          handleRoundEnd(newState, player.id);
-         // If round ends, turn is effectively over, no need to pass.
-         // However, the function returns newState. The generic loop/UI handles the state update.
     }
 
-    // Phase remains FLOCK_OR_PASS so they can flock again if they have another set
     return outcome;
   } 
   
   // --- PLAY ---
   if (move.type === MoveType.PLAY) {
-    if (newState.turnPhase !== TurnPhase.PLAY) return outcome; // Must play first
+    if (newState.turnPhase !== TurnPhase.PLAY) return outcome;
     if (move.rowIndex === undefined || move.side === undefined || !move.birdType) return outcome;
 
     // 1. Place birds
     const cardsToPlay = player.hand.filter(b => b === move.birdType);
     if (cardsToPlay.length === 0) return outcome;
 
-    // Remove played birds from hand
     player.hand = player.hand.filter(b => b !== move.birdType);
     
     const row = newState.rows[move.rowIndex];
-    
     if (move.side === 'LEFT') {
       row.unshift(...cardsToPlay);
     } else {
@@ -253,28 +234,20 @@ export const applyMove = (state: GameState, move: GameMove): MoveOutcome => {
 
     // 2. Resolve Capture
     let captured: BirdType[] = [];
-    
-    // Helper to check if a slice of birds contains the played type
     const containsPlayedType = (birds: BirdType[]) => birds.some(b => b === move.birdType);
 
     if (move.side === 'LEFT') {
-      // Row structure: [PlayedBlock] [PotentialVictims] [Match] ...
       const startSearchIdx = cardsToPlay.length;
       const firstMatchIndex = row.slice(startSearchIdx).findIndex(b => b === move.birdType);
       
       if (firstMatchIndex !== -1) {
         const absoluteMatchIndex = startSearchIdx + firstMatchIndex;
-        // Potential victims are between [startSearchIdx, absoluteMatchIndex)
         const potentialVictims = row.slice(startSearchIdx, absoluteMatchIndex);
-        
-        // Rule: You only capture if the birds between are NOT the same species
         if (potentialVictims.length > 0 && !containsPlayedType(potentialVictims)) {
             captured = row.splice(startSearchIdx, absoluteMatchIndex - startSearchIdx);
         }
       }
     } else {
-      // RIGHT
-      // Row structure: ... [Match] [PotentialVictims] [PlayedBlock]
       const originalRowLength = row.length - cardsToPlay.length;
       let lastMatchIndex = -1;
       for (let i = originalRowLength - 1; i >= 0; i--) {
@@ -283,7 +256,6 @@ export const applyMove = (state: GameState, move: GameMove): MoveOutcome => {
           break;
         }
       }
-
       if (lastMatchIndex !== -1) {
           const potentialVictims = row.slice(lastMatchIndex + 1, originalRowLength);
           if (potentialVictims.length > 0 && !containsPlayedType(potentialVictims)) {
@@ -298,29 +270,37 @@ export const applyMove = (state: GameState, move: GameMove): MoveOutcome => {
       outcome.captured = captured;
       outcome.message = `${player.name} played ${move.birdType}, captured ${captured.length}.`;
     } else {
-      // 3. No Capture -> Must Draw 2
-      let drawnCount = 0;
-      const c1 = drawCard(newState);
-      if(c1) { player.hand.push(c1); drawnCount++; }
-      const c2 = drawCard(newState);
-      if(c2) { player.hand.push(c2); drawnCount++; }
+      // 3. No Capture
+      // IMPORTANT: Check if hand is empty. If so, Round Ends Immediately. NO DRAW.
+      if (player.hand.length === 0) {
+          handleRoundEnd(newState, player.id);
+          outcome.message = `${player.name} played last card! Round Over.`;
+          outcome.drawn = 0;
+      } else {
+          // Normal Draw 2
+          let drawnCount = 0;
+          const c1 = drawCard(newState);
+          if(c1) { player.hand.push(c1); drawnCount++; }
+          const c2 = drawCard(newState);
+          if(c2) { player.hand.push(c2); drawnCount++; }
 
-      player.hand.sort();
-      outcome.drawn = drawnCount;
-      outcome.message = `${player.name} played ${move.birdType}, no capture. Drew ${drawnCount}.`;
+          player.hand.sort();
+          outcome.drawn = drawnCount;
+          outcome.message = `${player.name} played ${move.birdType}, no capture. Drew ${drawnCount}.`;
+      }
     }
 
-    // 4. Refill Row Rule (Official Cubirds Rule)
-    // If a row has 0 cards or only 1 species type, add cards until it has at least 2 distinct species.
+    // 4. Refill Row
     ensureRowValidity(row, newState);
 
-    // Transition Phase
-    // Player played. Now they can Flock or Pass.
     newState.turnPhase = TurnPhase.FLOCK_OR_PASS;
     newState.lastActionLog.push(outcome.message);
     
-    // Check Round End immediately if hand is empty
-    if (player.hand.length === 0) {
+    // Check Round End again just in case (though covered above)
+    // If captured cards but still empty? (Impossible, capture adds cards)
+    if (player.hand.length === 0 && outcome.drawn > 0) {
+         // Edge case: Drew 2 cards but somehow hand is empty? Not possible in logic.
+         // Standard check
          handleRoundEnd(newState, player.id);
     }
     
