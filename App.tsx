@@ -4,6 +4,7 @@ import { GameState, MoveType, BirdType, GameMove, MoveOutcome, TurnPhase } from 
 import { initializeGame, applyMove } from './services/gameLogic';
 import { getAiMove, initGemini } from './services/geminiService';
 import { playSound } from './services/audioService';
+import { createRoom, joinRoom, subscribeToRoom, updateGameState } from './services/firebase'; // Import Firebase
 import { Row } from './components/Row';
 import { PlayerArea } from './components/PlayerArea';
 import { Collection } from './components/Collection';
@@ -21,6 +22,9 @@ const App: React.FC = () => {
   const [onlineMenuState, setOnlineMenuState] = useState<'NONE' | 'CREATE' | 'JOIN'>('NONE');
   const [roomCode, setRoomCode] = useState<string>('');
   const [joinCodeInput, setJoinCodeInput] = useState<string>('');
+  const [isOnlineGame, setIsOnlineGame] = useState(false);
+  const [myPlayerId, setMyPlayerId] = useState<number>(0); // 0 for Host, 1 for Joiner
+  const [onlineStatus, setOnlineStatus] = useState<string>('');
 
   // Auto-pass timer state
   const [countdown, setCountdown] = useState<number | null>(null);
@@ -39,27 +43,93 @@ const App: React.FC = () => {
     initGemini();
   }, []);
 
+  // --- ONLINE SYNC EFFECT ---
+  useEffect(() => {
+      if (isOnlineGame && roomCode) {
+          const unsubscribe = subscribeToRoom(roomCode, (newState) => {
+              setGameState(newState);
+              // Simple "Game Start" detection for joiner
+              if (newState.players.length > 0 && newState.lastActionLog[newState.lastActionLog.length-1]?.includes("joined")) {
+                  setOnlineStatus("Connected!");
+              }
+          });
+          return () => unsubscribe();
+      }
+  }, [isOnlineGame, roomCode]);
+
+
   const startGame = (ai: boolean) => {
     playSound('click');
     const players = ai ? ['You', 'Gemini AI'] : ['Player 1', 'Player 2'];
-    setGameState(initializeGame(players, ai));
+    const newState = initializeGame(players, ai);
+    
+    setGameState(newState);
     setSelectedBird(null);
     setDrawConfirmation(null);
     setViewBoardMode(false);
-    setOnlineMenuState('NONE'); // Reset lobby state
+    setOnlineMenuState('NONE'); 
+    setIsOnlineGame(false);
+    setMyPlayerId(0); // Default to P1 for local/AI
   };
 
-  const handleCreateRoom = () => {
+  const startOnlineHost = async () => {
       playSound('click');
-      const code = Math.random().toString(36).substring(2, 6).toUpperCase();
+      const code = Math.floor(1000 + Math.random() * 9000).toString(); // Simple 4 digit numeric code
       setRoomCode(code);
       setOnlineMenuState('CREATE');
+      setOnlineStatus('Creating Room...');
+
+      const newState = initializeGame(['Host (You)', 'Opponent (Waiting)'], false);
+      // Hack: Set opponent name to indicate waiting
+      newState.players[1].name = "Waiting...";
+      
+      const success = await createRoom(code, newState);
+      if (success) {
+          setIsOnlineGame(true);
+          setMyPlayerId(0);
+          setGameState(newState);
+          setOnlineStatus('Waiting for opponent...');
+      } else {
+          setOnlineStatus('Error creating room. Check config.');
+      }
   };
 
-  const handleJoinRoom = () => {
+  const joinOnlineGame = async () => {
+      playSound('click');
+      if (joinCodeInput.length !== 4) return;
+      setOnlineStatus('Joining...');
+      
+      const result = await joinRoom(joinCodeInput);
+      if (result.success && result.gameState) {
+          const newState = result.gameState;
+          // Update player 2 name
+          newState.players[1].name = "Joiner (You)";
+          newState.players[0].name = "Host";
+          newState.lastActionLog.push("Opponent joined the game!");
+          
+          await updateGameState(joinCodeInput, newState);
+          
+          setRoomCode(joinCodeInput);
+          setMyPlayerId(1);
+          setIsOnlineGame(true);
+          setGameState(newState);
+          setOnlineMenuState('NONE');
+          playSound('success');
+      } else {
+          setOnlineStatus('Room not found or error.');
+          setTimeout(() => setOnlineStatus(''), 2000);
+      }
+  };
+
+  const handleCreateRoomClick = () => {
+     startOnlineHost();
+  };
+
+  const handleJoinRoomClick = () => {
       playSound('click');
       setOnlineMenuState('JOIN');
       setJoinCodeInput('');
+      setOnlineStatus('');
   };
 
   const quitGame = () => {
@@ -68,18 +138,34 @@ const App: React.FC = () => {
     setDrawConfirmation(null);
     setShowQuitConfirm(false);
     setViewBoardMode(false);
+    setIsOnlineGame(false);
+    setRoomCode('');
+  };
+
+  // Wrapper to sync moves
+  const syncMove = (newState: GameState) => {
+      setGameState(newState);
+      if (isOnlineGame && roomCode) {
+          updateGameState(roomCode, newState);
+      }
   };
 
   const handlePass = useCallback(() => {
       if (!gameState) return;
+      // Online Turn Check
+      if (isOnlineGame && gameState.currentPlayerIndex !== myPlayerId) return;
+
       playSound('click');
       const outcome = applyMove(gameState, { type: MoveType.PASS });
-      setGameState(outcome.newState);
+      syncMove(outcome.newState);
       setSelectedBird(null);
-  }, [gameState]);
+  }, [gameState, isOnlineGame, myPlayerId, roomCode]);
 
   // AI Logic
   const executeAiTurn = useCallback(async (currentState: GameState) => {
+    // Disable AI if online
+    if (isOnlineGame) return;
+
     const currentPlayer = currentState.players[currentState.currentPlayerIndex];
     if (!currentPlayer.isAi) return;
 
@@ -137,7 +223,7 @@ const App: React.FC = () => {
             });
         }, 1500); 
     }
-  }, []);
+  }, [isOnlineGame]);
 
   useEffect(() => {
     if (gameState && gameState.status === 'PLAYING') {
@@ -148,12 +234,26 @@ const App: React.FC = () => {
     }
   }, [gameState, executeAiTurn]);
 
+  // Determine Current Logic
   const currentPlayer = gameState ? gameState.players[gameState.currentPlayerIndex] : null;
-  // Determine if it is the HUMAN's turn
-  const isHumanTurn = gameState ? (!currentPlayer?.isAi && !gameState.isAiThinking) : false;
   
-  // Find the Human Player object (assuming ID 0 is human in AI mode, or current player in local)
-  const humanPlayer = gameState?.players.find(p => !p.isAi) || gameState?.players[0];
+  // Is it the Human's turn?
+  // Local/AI: Same as before.
+  // Online: Must match myPlayerId.
+  const isHumanTurn = gameState 
+    ? (isOnlineGame 
+        ? gameState.currentPlayerIndex === myPlayerId 
+        : (!currentPlayer?.isAi && !gameState.isAiThinking)) 
+    : false;
+  
+  // Which hand to show at bottom?
+  // Local/AI: Player 0 (Human) or current
+  // Online: ALWAYS myPlayerId
+  const humanPlayer = gameState 
+    ? (isOnlineGame 
+        ? gameState.players[myPlayerId] 
+        : (gameState.players.find(p => !p.isAi) || gameState.players[0]))
+    : null;
 
 
   // Auto-Pass Timer Effect
@@ -184,20 +284,21 @@ const App: React.FC = () => {
 
   const handleSelectSide = (rowIndex: number, side: 'LEFT' | 'RIGHT') => {
     if (!gameState || !selectedBird || gameState.turnPhase !== TurnPhase.PLAY) return;
+    if (isOnlineGame && gameState.currentPlayerIndex !== myPlayerId) return; // Not your turn online
     
     const move: GameMove = { type: MoveType.PLAY, birdType: selectedBird, rowIndex, side };
     const outcome = applyMove(gameState, move);
 
     if (outcome.captured.length > 0) {
         playSound('capture');
-        setGameState(outcome.newState);
+        syncMove(outcome.newState);
         setSelectedBird(null);
     } else if (outcome.drawn > 0) {
         playSound('pop');
         setDrawConfirmation({ outcome });
     } else {
         // Round Ended immediately (0 drawn)
-        setGameState(outcome.newState);
+        syncMove(outcome.newState);
         setSelectedBird(null);
     }
   };
@@ -205,7 +306,7 @@ const App: React.FC = () => {
   const confirmDraw = () => {
       if (!drawConfirmation) return;
       playSound('draw');
-      setGameState(drawConfirmation.outcome.newState);
+      syncMove(drawConfirmation.outcome.newState);
       setDrawConfirmation(null);
       setSelectedBird(null);
   };
@@ -220,14 +321,15 @@ const App: React.FC = () => {
         player.hand.pop();
         modifiedState.lastActionLog.push("...skipped drawing.");
     }
-    setGameState(modifiedState);
+    syncMove(modifiedState);
     setDrawConfirmation(null);
     setSelectedBird(null);
   };
 
   const handleFlock = () => {
     if (!gameState || !selectedBird || gameState.turnPhase !== TurnPhase.FLOCK_OR_PASS) return;
-    
+    if (isOnlineGame && gameState.currentPlayerIndex !== myPlayerId) return;
+
     // Trigger Animation
     setFlockingBird(selectedBird);
     playSound('success');
@@ -235,14 +337,17 @@ const App: React.FC = () => {
     // Delay actual state update to allow animation to play
     setTimeout(() => {
         const outcome = applyMove(gameState, { type: MoveType.FLOCK, birdType: selectedBird });
-        setGameState(outcome.newState);
+        syncMove(outcome.newState);
         setSelectedBird(null);
         setFlockingBird(null);
-    }, 600); // 600ms matches animation
+    }, 600); 
   };
 
   // --- RENDER START SCREEN / LOBBY ---
-  if (!gameState) {
+  if (!gameState || (isOnlineGame && gameState.players[1].name === "Waiting..." && myPlayerId === 0)) {
+    // If we are Host and waiting for opponent, show waiting screen inside standard game view or special view?
+    // Let's handle special "Lobby Waiting" state here
+    
     return (
       <div className="min-h-screen flex flex-col items-center justify-center bg-stone-100 p-4 font-sans text-stone-800">
         <h1 className="text-8xl font-black text-transparent bg-clip-text bg-gradient-to-br from-teal-500 to-indigo-600 mb-2 drop-shadow-sm tracking-tighter">
@@ -265,18 +370,24 @@ const App: React.FC = () => {
                     <span className="text-2xl">✨</span> Play vs AI
                 </button>
                 <button 
-                    onClick={handleCreateRoom}
+                    onClick={handleCreateRoomClick}
                     className="w-full bg-white border-2 border-stone-200 text-stone-600 hover:bg-stone-50 font-bold py-4 rounded-2xl transition-all hover:-translate-y-1 flex items-center justify-center gap-3"
                 >
-                    <span className="text-xl">🌐</span> Online Multiplayer
+                    <span className="text-xl">🌐</span> Create Online Room
+                </button>
+                 <button 
+                    onClick={handleJoinRoomClick}
+                    className="w-full mt-2 text-stone-400 font-bold hover:text-stone-600 hover:underline text-sm"
+                >
+                    Join Existing Room
                 </button>
             </div>
         )}
 
-        {/* Create Room View */}
+        {/* Create Room View (Waiting) */}
         {onlineMenuState === 'CREATE' && (
              <div className="bg-white p-8 rounded-3xl shadow-2xl max-w-md w-full border-4 border-white animate-bounce-in text-center">
-                 <h2 className="text-2xl font-bold text-stone-800 mb-4">Create Room</h2>
+                 <h2 className="text-2xl font-bold text-stone-800 mb-4">Room Created</h2>
                  <div className="bg-stone-100 p-6 rounded-2xl mb-6">
                      <div className="text-sm text-stone-500 mb-2 uppercase tracking-wide">Room Code</div>
                      <div className="text-5xl font-black text-indigo-500 tracking-widest">{roomCode}</div>
@@ -285,10 +396,11 @@ const App: React.FC = () => {
                      <span className="w-2 h-2 bg-stone-400 rounded-full"></span>
                      <span className="w-2 h-2 bg-stone-400 rounded-full"></span>
                      <span className="w-2 h-2 bg-stone-400 rounded-full"></span>
-                     <span>Waiting for opponent...</span>
+                     <span>Waiting for opponent to join...</span>
                  </div>
+                 {onlineStatus && <p className="text-red-400 text-xs mb-4">{onlineStatus}</p>}
                  <button 
-                    onClick={() => setOnlineMenuState('NONE')}
+                    onClick={() => { setOnlineMenuState('NONE'); setIsOnlineGame(false); setRoomCode(''); }}
                     className="w-full py-3 text-stone-400 font-bold hover:text-stone-600"
                  >
                      Cancel
@@ -303,20 +415,22 @@ const App: React.FC = () => {
                  <input 
                     type="text"
                     value={joinCodeInput}
-                    onChange={(e) => setJoinCodeInput(e.target.value.toUpperCase())}
+                    onChange={(e) => setJoinCodeInput(e.target.value.replace(/\D/g,'').slice(0,4))}
                     placeholder="Enter 4-Digit Code"
                     maxLength={4}
+                    inputMode="numeric"
                     className="w-full bg-stone-100 text-center text-3xl font-black text-indigo-600 p-4 rounded-xl mb-6 outline-none border-2 border-transparent focus:border-indigo-400 transition-all placeholder:text-stone-300"
                  />
+                 {onlineStatus && <p className="text-indigo-400 text-sm mb-4 font-bold">{onlineStatus}</p>}
                  <button 
-                    onClick={() => startGame(false)} // Simulating join success by starting local game
+                    onClick={joinOnlineGame} 
                     disabled={joinCodeInput.length !== 4}
                     className="w-full bg-indigo-500 hover:bg-indigo-600 disabled:bg-stone-200 disabled:text-stone-400 text-white font-bold py-4 rounded-2xl mb-4 transition-all"
                  >
                      Join Game
                  </button>
                  <button 
-                    onClick={() => setOnlineMenuState('NONE')}
+                    onClick={() => { setOnlineMenuState('NONE'); setOnlineStatus(''); }}
                     className="w-full py-2 text-stone-400 font-bold hover:text-stone-600"
                  >
                      Back
@@ -350,6 +464,14 @@ const App: React.FC = () => {
                  <button onClick={() => setShowQuitConfirm(true)} className="text-stone-400 hover:text-red-500 font-bold px-4 py-2 rounded-xl bg-white border border-stone-200 hover:bg-red-50 hover:border-red-200 transition-colors">← Quit Game</button>
                  <div className="font-black text-3xl text-stone-300 tracking-tighter">CUBIRDS</div>
              </div>
+             
+             {isOnlineGame && (
+                 <div className="flex items-center gap-2 bg-indigo-50 px-4 py-2 rounded-full border border-indigo-100">
+                     <span className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></span>
+                     <span className="text-indigo-600 font-bold text-sm">Room: {roomCode}</span>
+                 </div>
+             )}
+
              {gameState.isAiThinking && (
                 <div className="flex items-center gap-2 text-indigo-500 font-bold animate-pulse bg-indigo-50 px-4 py-2 rounded-full">✨ Gemini is thinking...</div>
              )}
@@ -461,7 +583,7 @@ const App: React.FC = () => {
 
       {/* Player Area - Always show Human (or P1) at bottom, but disabled if not turn */}
       {humanPlayer && (
-        <div className={drawConfirmation ? 'pointer-events-none opacity-40 blur-[2px] transition-all duration-300' : 'transition-all duration-300'}>
+        <div className={drawConfirmation || (isOnlineGame && gameState.currentPlayerIndex !== myPlayerId) ? 'pointer-events-none opacity-80 blur-[0.5px] transition-all duration-300' : 'transition-all duration-300'}>
             <PlayerArea 
                 player={humanPlayer} 
                 isCurrentTurn={isHumanTurn}
@@ -472,7 +594,7 @@ const App: React.FC = () => {
                 }}
                 onFlock={handleFlock}
                 onPass={handlePass}
-                isHidden={false} // Always visible to self
+                isHidden={false} 
                 countdown={countdown}
                 onTimerSet={setTimerDuration}
                 flockingBirdType={flockingBird}
