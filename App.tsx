@@ -18,10 +18,14 @@ const App: React.FC = () => {
   
   // Auto-pass timer state
   const [countdown, setCountdown] = useState<number | null>(null);
+  const [timerDuration, setTimerDuration] = useState<number>(10);
   const timerRef = useRef<number | null>(null);
 
   const [drawConfirmation, setDrawConfirmation] = useState<{ outcome: MoveOutcome } | null>(null);
   
+  // Animation State
+  const [flockingBird, setFlockingBird] = useState<BirdType | null>(null);
+
   // "View Board" mode after game over
   const [viewBoardMode, setViewBoardMode] = useState(false);
 
@@ -125,14 +129,19 @@ const App: React.FC = () => {
   }, [gameState, executeAiTurn]);
 
   const currentPlayer = gameState ? gameState.players[gameState.currentPlayerIndex] : null;
-  const isMyTurn = gameState ? (!currentPlayer?.isAi && !gameState.isAiThinking) : false;
+  // Determine if it is the HUMAN's turn
+  const isHumanTurn = gameState ? (!currentPlayer?.isAi && !gameState.isAiThinking) : false;
+  
+  // Find the Human Player object (assuming ID 0 is human in AI mode, or current player in local)
+  const humanPlayer = gameState?.players.find(p => !p.isAi) || gameState?.players[0];
+
 
   // Auto-Pass Timer Effect
   useEffect(() => {
     if (timerRef.current) clearInterval(timerRef.current);
     
-    if (isMyTurn && gameState?.turnPhase === TurnPhase.FLOCK_OR_PASS) {
-        setCountdown(10);
+    if (isHumanTurn && gameState?.turnPhase === TurnPhase.FLOCK_OR_PASS) {
+        setCountdown(timerDuration);
         timerRef.current = window.setInterval(() => {
             setCountdown(prev => {
                 if (prev !== null && prev <= 1) {
@@ -150,7 +159,7 @@ const App: React.FC = () => {
     return () => {
         if (timerRef.current) clearInterval(timerRef.current);
     };
-  }, [gameState?.turnPhase, isMyTurn, handlePass]);
+  }, [gameState?.turnPhase, isHumanTurn, handlePass, timerDuration]);
 
 
   const handleSelectSide = (rowIndex: number, side: 'LEFT' | 'RIGHT') => {
@@ -164,11 +173,12 @@ const App: React.FC = () => {
         setGameState(outcome.newState);
         setSelectedBird(null);
     } else if (outcome.drawn > 0) {
-        // Only show Draw 2 if actually drawn (Round didn't end)
         playSound('pop');
         setDrawConfirmation({ outcome });
     } else {
         // Round Ended immediately (0 drawn)
+        // Hand emptied -> Deal New Hand -> Shift Player -> Turn Phase Reset
+        // We do NOT need to ask for draw 2.
         setGameState(outcome.newState);
         setSelectedBird(null);
     }
@@ -199,10 +209,18 @@ const App: React.FC = () => {
 
   const handleFlock = () => {
     if (!gameState || !selectedBird || gameState.turnPhase !== TurnPhase.FLOCK_OR_PASS) return;
-    const outcome = applyMove(gameState, { type: MoveType.FLOCK, birdType: selectedBird });
+    
+    // Trigger Animation
+    setFlockingBird(selectedBird);
     playSound('success');
-    setGameState(outcome.newState);
-    setSelectedBird(null); 
+
+    // Delay actual state update to allow animation to play
+    setTimeout(() => {
+        const outcome = applyMove(gameState, { type: MoveType.FLOCK, birdType: selectedBird });
+        setGameState(outcome.newState);
+        setSelectedBird(null);
+        setFlockingBird(null);
+    }, 600); // 600ms matches animation
   };
 
   if (!gameState) {
@@ -234,8 +252,6 @@ const App: React.FC = () => {
       </div>
     );
   }
-
-  const isHandHidden = currentPlayer?.isAi; 
 
   return (
     <div className="min-h-screen bg-stone-50 pb-[340px] flex flex-col md:flex-row">
@@ -280,7 +296,7 @@ const App: React.FC = () => {
                     index={idx} 
                     birds={row} 
                     onSelectSide={handleSelectSide}
-                    isCurrentPlayerTurn={isMyTurn && gameState.turnPhase === TurnPhase.PLAY}
+                    isCurrentPlayerTurn={isHumanTurn && gameState.turnPhase === TurnPhase.PLAY}
                     selectedBird={selectedBird}
                     pendingMove={null}
                 />
@@ -364,19 +380,23 @@ const App: React.FC = () => {
           </div>
       )}
 
-      {/* Player Area */}
-      {currentPlayer && (
+      {/* Player Area - Always show Human (or P1) at bottom, but disabled if not turn */}
+      {humanPlayer && (
         <div className={drawConfirmation ? 'pointer-events-none opacity-40 blur-[2px] transition-all duration-300' : 'transition-all duration-300'}>
             <PlayerArea 
-                player={currentPlayer} 
-                isCurrentTurn={isMyTurn}
+                player={humanPlayer} 
+                isCurrentTurn={isHumanTurn}
                 phase={gameState.turnPhase}
                 selectedBird={selectedBird}
-                onSelectBird={(b) => { playSound('click'); setSelectedBird(b); }}
+                onSelectBird={(b) => { 
+                    if (isHumanTurn) { playSound('click'); setSelectedBird(b); }
+                }}
                 onFlock={handleFlock}
                 onPass={handlePass}
-                isHidden={isHandHidden}
+                isHidden={false} // Always visible to self
                 countdown={countdown}
+                onTimerSet={setTimerDuration}
+                flockingBirdType={flockingBird}
             />
         </div>
       )}

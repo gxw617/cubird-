@@ -1,4 +1,3 @@
-
 import React from 'react';
 import { BIRD_DATA } from '../constants';
 
@@ -9,18 +8,19 @@ interface BirdGuideProps {
 
 export const BirdGuide: React.FC<BirdGuideProps> = ({ className, onClose }) => {
   
-  // Helper to get a nice pastel background for the text badge based on the bird's main color
+  // Updated Helper to match new palette in Card.tsx
   const getBadgeStyle = (colorClass: string) => {
-    if (colorClass.includes('green')) return 'bg-green-100 text-green-800';
-    if (colorClass.includes('indigo')) return 'bg-indigo-100 text-indigo-800';
-    if (colorClass.includes('pink')) return 'bg-pink-100 text-pink-800';
-    if (colorClass.includes('orange')) return 'bg-orange-100 text-orange-800';
-    if (colorClass.includes('yellow')) return 'bg-yellow-100 text-yellow-800';
-    if (colorClass.includes('slate')) return 'bg-slate-200 text-slate-800';
-    if (colorClass.includes('emerald')) return 'bg-emerald-100 text-emerald-800';
-    if (colorClass.includes('red')) return 'bg-red-100 text-red-800';
-    if (colorClass.includes('blue')) return 'bg-blue-100 text-blue-800';
-    return 'bg-gray-100 text-gray-800';
+    switch (colorClass) {
+      case 'bg-emerald-500': return 'bg-emerald-100 text-emerald-800';
+      case 'bg-indigo-400': return 'bg-indigo-100 text-indigo-800';
+      case 'bg-rose-400': return 'bg-rose-100 text-rose-800';
+      case 'bg-orange-400': return 'bg-orange-100 text-orange-800';
+      case 'bg-amber-300': return 'bg-amber-100 text-amber-800';
+      case 'bg-stone-500': return 'bg-stone-200 text-stone-800';
+      case 'bg-sky-500': return 'bg-sky-100 text-sky-800';
+      case 'bg-amber-700': return 'bg-orange-100 text-orange-900'; // Close enough for Robin
+      default: return 'bg-gray-100 text-gray-800';
+    }
   };
 
   return (

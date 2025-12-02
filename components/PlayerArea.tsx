@@ -1,4 +1,4 @@
-import React, { useMemo } from 'react';
+import React, { useMemo, useEffect } from 'react';
 import { Player, BirdType, TurnPhase } from '../types';
 import { Card } from './Card';
 import { BIRD_DATA } from '../constants';
@@ -12,7 +12,9 @@ interface PlayerAreaProps {
   onFlock: () => void;
   onPass: () => void;
   isHidden?: boolean; 
-  countdown?: number | null; // New countdown prop
+  onTimerSet?: (duration: number) => void; // New prop to bubble up timer duration
+  countdown?: number | null;
+  flockingBirdType?: BirdType | null; // For animation
 }
 
 export const PlayerArea: React.FC<PlayerAreaProps> = ({ 
@@ -24,7 +26,9 @@ export const PlayerArea: React.FC<PlayerAreaProps> = ({
     onFlock, 
     onPass,
     isHidden,
-    countdown
+    onTimerSet,
+    countdown,
+    flockingBirdType
 }) => {
   
   // Group hand by bird type
@@ -36,6 +40,19 @@ export const PlayerArea: React.FC<PlayerAreaProps> = ({
     return groups;
   }, [player.hand]);
 
+  // Check how many flocks are available
+  const flockOptions = useMemo(() => {
+    let options = 0;
+    Object.keys(groupedHand).forEach((key) => {
+        const type = key as BirdType;
+        const count = groupedHand[type] || 0;
+        if (count >= BIRD_DATA[type].smallFlock) {
+            options++;
+        }
+    });
+    return options;
+  }, [groupedHand]);
+
   const canFlock = useMemo(() => {
     if (!selectedBird) return false;
     const count = groupedHand[selectedBird] || 0;
@@ -43,17 +60,30 @@ export const PlayerArea: React.FC<PlayerAreaProps> = ({
     return count >= config.smallFlock;
   }, [selectedBird, groupedHand]);
 
+  // Determine timer duration
+  useEffect(() => {
+    if (isCurrentTurn && phase === TurnPhase.FLOCK_OR_PASS && onTimerSet) {
+        if (flockOptions === 0) onTimerSet(5);
+        else if (flockOptions === 1) onTimerSet(15);
+        else onTimerSet(20);
+    }
+  }, [isCurrentTurn, phase, flockOptions, onTimerSet]);
+
   const isPlayPhase = phase === TurnPhase.PLAY;
   const isFlockPhase = phase === TurnPhase.FLOCK_OR_PASS;
 
+  // Render logic specifically for AI/Hidden vs Human
+  // If isHidden is true (AI), we show card backs.
+  // If isHidden is false (Human), we show real cards.
+
   return (
-    <div className={`fixed bottom-0 left-0 right-0 z-30 transition-all duration-300 ${isCurrentTurn ? 'bg-white/95 shadow-[0_-4px_20px_rgba(0,0,0,0.05)] border-t border-stone-200 pb-2' : 'bg-stone-200/90 pb-2 translate-y-2'}`}>
+    <div className={`fixed bottom-0 left-0 right-0 z-30 transition-all duration-300 ${isCurrentTurn ? 'bg-white/95 shadow-[0_-4px_20px_rgba(0,0,0,0.05)] border-t border-stone-200 pb-2' : 'bg-stone-100/90 pb-2 border-t border-stone-200'}`}>
       <div className="max-w-7xl mx-auto px-4 flex flex-col md:flex-row items-center md:items-end justify-between gap-4">
         
         {/* Info */}
         <div className="flex flex-col items-center md:items-start min-w-[120px] mb-2 md:mb-4 pt-4 md:pt-0">
           <h3 className={`font-bold text-lg transition-colors ${isCurrentTurn ? 'text-emerald-600' : 'text-stone-400'}`}>
-            {isCurrentTurn ? (isPlayPhase ? "Play a Card" : "Flock or Pass") : `${player.name}'s Turn`}
+            {isCurrentTurn ? (isPlayPhase ? "Play a Card" : "Flock or Pass") : "Opponent's Turn"}
           </h3>
           {!isHidden && (
               <div className="text-xs text-stone-400 font-medium">
@@ -62,61 +92,71 @@ export const PlayerArea: React.FC<PlayerAreaProps> = ({
           )}
         </div>
 
-        {/* Hand */}
-        <div className="flex-1 w-full overflow-x-auto scrollbar-hide flex justify-center pb-2 pt-6">
-            <div className="flex items-end pl-20 md:pl-0 pr-20 md:pr-0">
+        {/* Hand - Horizontal Scroll Enabled */}
+        <div className="flex-1 w-full overflow-x-auto scrollbar-thin flex justify-start md:justify-center pb-4 pt-6 px-4">
+            <div className="flex items-end space-x-2 min-w-min mx-auto">
             {isHidden ? (
-                // Completely hide opponent hand content
-                <div className="h-40 flex items-center justify-center text-stone-400 font-bold tracking-widest uppercase text-sm opacity-50">
-                    Waiting for opponent...
-                </div>
+                // Hidden Hand (Opponent)
+                 player.hand.map((_, i) => (
+                    <div key={i} className="-ml-8 first:ml-0">
+                         <Card type={BirdType.PARROT} isFaceDown mini /> 
+                    </div>
+                 ))
             ) : (
+                // Visible Hand (Human)
                 Object.keys(groupedHand).sort().map((key) => {
                     const type = key as BirdType;
                     const count = groupedHand[type] || 0;
                     const isSelected = selectedBird === type;
+                    const isFlocking = flockingBirdType === type;
                     
                     const stackDepth = Math.min(count - 1, 2); 
                     
+                    // If disabling interaction (e.g. not my turn)
+                    const isDisabled = !isCurrentTurn;
+
                     return (
-                        <div key={type} className={`relative group mx-3 transition-transform ${isCurrentTurn ? 'hover:-translate-y-2' : ''}`}>
+                        <div key={type} className={`relative group mx-2 md:mx-3 transition-transform flex-shrink-0 ${!isDisabled ? 'hover:-translate-y-2' : 'opacity-80 grayscale-[0.3]'}`}>
                             
                             {/* Visual Stack Layers */}
                             {stackDepth >= 1 && (
-                                <div className="absolute top-0 left-0 w-full h-full transform -rotate-6 -translate-x-3 translate-y-1 z-0">
+                                <div className={`absolute top-0 left-0 w-full h-full transform -rotate-6 -translate-x-3 translate-y-1 z-0 ${isFlocking ? 'animate-fly-up delay-75' : ''}`}>
                                     <Card type={type} isStackPlaceholder />
                                 </div>
                             )}
                             {stackDepth >= 2 && (
-                                <div className="absolute top-0 left-0 w-full h-full transform -rotate-3 -translate-x-1.5 translate-y-0.5 z-10">
+                                <div className={`absolute top-0 left-0 w-full h-full transform -rotate-3 -translate-x-1.5 translate-y-0.5 z-10 ${isFlocking ? 'animate-fly-up delay-100' : ''}`}>
                                     <Card type={type} isStackPlaceholder />
                                 </div>
                             )}
 
                             {/* Quantity Badge */}
-                            <div className={`
-                                absolute -top-4 -right-3 
-                                text-xs font-black w-7 h-7 
-                                rounded-full flex items-center justify-center 
-                                z-30 border-[3px] shadow-sm transition-colors 
-                                ${isSelected ? 'bg-yellow-400 text-yellow-900 border-white' : 'bg-stone-800 text-white border-white'}
-                            `}>
-                                {count}
-                            </div>
+                            {!isFlocking && (
+                                <div className={`
+                                    absolute -top-4 -right-3 
+                                    text-xs font-black w-7 h-7 
+                                    rounded-full flex items-center justify-center 
+                                    z-30 border-[3px] shadow-sm transition-colors 
+                                    ${isSelected ? 'bg-yellow-400 text-yellow-900 border-white' : 'bg-stone-800 text-white border-white'}
+                                `}>
+                                    {count}
+                                </div>
+                            )}
 
                             {/* Main Card */}
                             <div className="relative z-20">
                                 <Card 
                                     type={type} 
                                     selected={isSelected} 
-                                    isDimmed={isCurrentTurn && isFlockPhase && !canFlock && isSelected}
+                                    isDimmed={!isDisabled && isFlockPhase && !canFlock && isSelected}
+                                    isFlying={isFlocking}
                                     onClick={() => {
-                                        if (isCurrentTurn) {
+                                        if (!isDisabled) {
                                             onSelectBird(isSelected ? null : type);
                                         }
                                     }}
                                     onDragStart={(e) => {
-                                        if (isCurrentTurn && isPlayPhase) {
+                                        if (!isDisabled && isPlayPhase) {
                                             onSelectBird(type);
                                         } else {
                                             e.preventDefault();
@@ -134,7 +174,7 @@ export const PlayerArea: React.FC<PlayerAreaProps> = ({
         {/* Actions */}
         <div className="flex flex-col gap-2 min-w-[160px] pb-4 md:pb-4">
              
-             {isFlockPhase ? (
+             {isCurrentTurn && isFlockPhase ? (
                  <div className="flex flex-col gap-2 w-full">
                      <button 
                         onClick={onFlock}
@@ -142,7 +182,7 @@ export const PlayerArea: React.FC<PlayerAreaProps> = ({
                         className={`
                             w-full px-6 py-3 rounded-xl font-bold shadow-sm transition-all flex items-center justify-center
                             ${canFlock && !isHidden
-                                ? 'bg-stone-800 text-white hover:bg-black active:scale-95 shadow-md' 
+                                ? 'bg-stone-800 text-white hover:bg-black active:scale-95 shadow-md animate-heartbeat' 
                                 : 'bg-stone-200 text-stone-400 cursor-not-allowed border border-stone-300'}
                         `}
                      >
@@ -157,23 +197,23 @@ export const PlayerArea: React.FC<PlayerAreaProps> = ({
                             End Turn
                          </button>
                          {countdown !== null && countdown !== undefined && (
-                             <div className="w-8 h-full flex items-center justify-center font-bold text-orange-500 text-sm animate-pulse">
+                             <div className={`w-8 h-full flex items-center justify-center font-bold text-sm animate-pulse ${countdown < 5 ? 'text-red-500' : 'text-orange-500'}`}>
                                  {countdown}s
                              </div>
                          )}
                      </div>
                  </div>
              ) : (
-                 <div className="w-full px-6 py-4 rounded-xl border-2 border-dashed border-stone-300 text-stone-400 text-center font-bold text-sm bg-stone-50">
-                    {isHidden ? 'Opponent Playing...' : selectedBird ? 'Click Row or Drag →' : 'Select Card'}
+                 <div className={`w-full px-6 py-4 rounded-xl border-2 border-dashed text-center font-bold text-sm ${isCurrentTurn ? 'border-stone-300 text-stone-400 bg-stone-50' : 'border-stone-200 text-stone-300'}`}>
+                    {isCurrentTurn 
+                        ? (selectedBird ? 'Click Row or Drag →' : 'Select Card') 
+                        : 'Wait for turn...'}
                  </div>
              )}
              
-             {!isHidden && (
-                <div className="text-[10px] text-stone-400 text-center font-medium">
-                    {isPlayPhase ? 'Phase 1: Play Cards' : 'Phase 2: Flock (Optional)'}
-                </div>
-             )}
+             <div className="text-[10px] text-stone-400 text-center font-medium">
+                {isCurrentTurn ? (isPlayPhase ? 'Phase 1: Play Cards' : 'Phase 2: Flock (Optional)') : 'Opponent Thinking'}
+             </div>
         </div>
       </div>
     </div>

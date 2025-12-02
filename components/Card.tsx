@@ -12,6 +12,7 @@ interface CardProps {
   isDimmed?: boolean; 
   isStackPlaceholder?: boolean;
   isFaceDown?: boolean; 
+  isFlying?: boolean; // New prop for flock animation
   onDragStart?: (e: React.DragEvent) => void;
 }
 
@@ -25,31 +26,32 @@ export const Card: React.FC<CardProps> = ({
   isDimmed, 
   isStackPlaceholder,
   isFaceDown,
+  isFlying,
   onDragStart 
 }) => {
   const bird = BIRD_DATA[type];
   
-  // Define a rich, pastel/earthy color palette
+  // Consistent Palette Logic mapped to constants
   const getPalette = (bgClass: string) => {
     switch (bgClass) {
-      // Parrot (Green) -> Soft Mint/Sage
-      case 'bg-emerald-400': return { base: 'bg-[#A7F3D0]', border: 'border-[#34D399]', text: 'text-[#065F46]' };
-      // Owl (Purple) -> Soft Lavender
-      case 'bg-violet-400': return { base: 'bg-[#DDD6FE]', border: 'border-[#A78BFA]', text: 'text-[#5B21B6]' };
-      // Flamingo (Pink) -> Soft Rose
-      case 'bg-rose-400': return { base: 'bg-[#FECDD3]', border: 'border-[#FB7185]', text: 'text-[#9F1239]' };
-      // Toucan (Orange) -> Soft Peach
-      case 'bg-orange-400': return { base: 'bg-[#FED7AA]', border: 'border-[#FB923C]', text: 'text-[#9A3412]' };
-      // Duck (Yellow) -> Soft Cream/Yellow
-      case 'bg-yellow-400': return { base: 'bg-[#FEF08A]', border: 'border-[#FACC15]', text: 'text-[#854D0E]' };
-      // Magpie (Grey) -> Soft Stone
-      case 'bg-stone-400': return { base: 'bg-[#E7E5E4]', border: 'border-[#A8A29E]', text: 'text-[#44403C]' };
-      // Reed Warbler (Blue) -> Soft Sky
-      case 'bg-sky-400': return { base: 'bg-[#BAE6FD]', border: 'border-[#38BDF8]', text: 'text-[#075985]' };
-      // Robin (Brown) -> Soft Tan/Sienna
-      case 'bg-amber-600': return { base: 'bg-[#E7CBA9]', border: 'border-[#D97706]', text: 'text-[#78350F]' }; // Custom pastel brown
+      // Parrot (Emerald)
+      case 'bg-emerald-500': return { base: 'bg-[#6EE7B7]', border: 'border-[#10B981]', text: 'text-[#064E3B]' };
+      // Owl (Indigo)
+      case 'bg-indigo-400': return { base: 'bg-[#A5B4FC]', border: 'border-[#6366F1]', text: 'text-[#312E81]' };
+      // Flamingo (Rose)
+      case 'bg-rose-400': return { base: 'bg-[#FDA4AF]', border: 'border-[#F43F5E]', text: 'text-[#881337]' };
+      // Toucan (Orange)
+      case 'bg-orange-400': return { base: 'bg-[#FDBA74]', border: 'border-[#F97316]', text: 'text-[#7C2D12]' };
+      // Duck (Amber/Yellow)
+      case 'bg-amber-300': return { base: 'bg-[#FCD34D]', border: 'border-[#F59E0B]', text: 'text-[#78350F]' };
+      // Magpie (Stone)
+      case 'bg-stone-500': return { base: 'bg-[#D6D3D1]', border: 'border-[#78716C]', text: 'text-[#292524]' };
+      // Reed Warbler (Sky)
+      case 'bg-sky-500': return { base: 'bg-[#7DD3FC]', border: 'border-[#0EA5E9]', text: 'text-[#0C4A6E]' };
+      // Robin (Deep Amber/Brown)
+      case 'bg-amber-700': return { base: 'bg-[#D4A373]', border: 'border-[#B45309]', text: 'text-[#451A03]' };
       
-      default: return { base: 'bg-gray-100', border: 'border-gray-300', text: 'text-gray-900' };
+      default: return { base: 'bg-gray-200', border: 'border-gray-400', text: 'text-gray-800' };
     }
   };
 
@@ -59,8 +61,9 @@ export const Card: React.FC<CardProps> = ({
   const cursorClass = onClick ? 'cursor-pointer' : 'cursor-default';
   const dragClass = onDragStart && !isFaceDown ? 'cursor-grab active:cursor-grabbing' : '';
   
-  // Animation for entering (Drawing)
-  const animClass = !mini && !isGhost && !isStackPlaceholder ? 'animate-[bounceIn_0.4s_ease-out]' : '';
+  // Animations
+  const animClass = !mini && !isGhost && !isStackPlaceholder && !isFlying ? 'animate-[bounceIn_0.4s_ease-out]' : '';
+  const flyClass = isFlying ? 'animate-fly-up z-50 pointer-events-none' : '';
   
   // State styles
   const stateClasses = isGhost 
@@ -72,7 +75,7 @@ export const Card: React.FC<CardProps> = ({
   // Selection visual logic
   const selectedClasses = selected 
     ? 'ring-[4px] ring-offset-2 ring-stone-800 -translate-y-6 z-20 shadow-xl' 
-    : !isGhost && !isDimmed && !isStackPlaceholder && onClick && !isFaceDown ? 'hover:-translate-y-2 hover:shadow-md' : '';
+    : !isGhost && !isDimmed && !isStackPlaceholder && onClick && !isFaceDown && !isFlying ? 'hover:-translate-y-2 hover:shadow-md' : '';
 
   const stackClasses = stacked ? '-ml-16 hover:ml-2 hover:z-50 transition-all' : '';
 
@@ -86,7 +89,7 @@ export const Card: React.FC<CardProps> = ({
     relative flex flex-col items-center
     transition-all duration-300 select-none overflow-hidden
     ${isFaceDown ? 'bg-stone-300 border-stone-400' : `${palette.border} ${stateClasses}`} 
-    ${cursorClass} ${dragClass} ${cardSizeClasses} ${animClass}
+    ${cursorClass} ${dragClass} ${cardSizeClasses} ${animClass} ${flyClass}
   `;
 
   // --- Stack Placeholder Render ---
@@ -132,7 +135,7 @@ export const Card: React.FC<CardProps> = ({
         onClick={onClick}
       >
         {/* Flock Badge (Printed Effect) */}
-        {!isGhost && (
+        {!isGhost && !isFlying && (
             <div className={`
                 absolute top-2 right-3
                 text-[13px] font-black tracking-tighter
@@ -158,7 +161,7 @@ export const Card: React.FC<CardProps> = ({
         </div>
 
         {/* Name (Printed Effect) */}
-        {!isGhost && (
+        {!isGhost && !isFlying && (
             <div className={`
                 absolute bottom-3 w-full text-center
                 text-[11px] font-black uppercase tracking-widest
