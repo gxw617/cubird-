@@ -58,29 +58,56 @@ export const PlayerArea: React.FC<PlayerAreaProps> = ({ player, isCurrentTurn, p
                 const count = groupedHand[type] || 0;
                 const isSelected = selectedBird === type;
                 
+                // Determine visual stack depth (max 2 extra layers for clean UI)
+                const stackDepth = Math.min(count - 1, 2); 
+                
                 return (
-                    <div key={type} className={`relative group mx-1.5 transition-transform ${isCurrentTurn ? 'hover:-translate-y-2' : ''}`}>
-                        <div className={`absolute -top-3 -right-2 text-xs font-bold w-6 h-6 rounded-full flex items-center justify-center z-30 border-2 shadow-sm transition-colors ${isSelected ? 'bg-yellow-400 text-yellow-900 border-white' : 'bg-stone-700 text-white border-white'}`}>
+                    <div key={type} className={`relative group mx-3 transition-transform ${isCurrentTurn ? 'hover:-translate-y-2' : ''}`}>
+                        
+                        {/* Visual Stack Layers (Underlays) */}
+                        {stackDepth >= 1 && (
+                            <div className="absolute top-0 left-0 w-full h-full transform -rotate-6 -translate-x-3 translate-y-1 z-0">
+                                <Card type={type} isStackPlaceholder />
+                            </div>
+                        )}
+                        {stackDepth >= 2 && (
+                            <div className="absolute top-0 left-0 w-full h-full transform -rotate-3 -translate-x-1.5 translate-y-0.5 z-10">
+                                <Card type={type} isStackPlaceholder />
+                            </div>
+                        )}
+
+                        {/* Quantity Badge (Floating over stack) */}
+                        <div className={`
+                            absolute -top-4 -right-3 
+                            text-xs font-black w-7 h-7 
+                            rounded-full flex items-center justify-center 
+                            z-30 border-[3px] shadow-sm transition-colors 
+                            ${isSelected ? 'bg-yellow-400 text-yellow-900 border-white' : 'bg-stone-800 text-white border-white'}
+                        `}>
                             {count}
                         </div>
-                        <Card 
-                            type={type} 
-                            selected={isSelected} 
-                            isDimmed={isCurrentTurn && isFlockPhase && !canFlock && isSelected} // Dim if trying to flock invalid
-                            onClick={() => {
-                                if (isCurrentTurn) {
-                                    // In Play phase, select to Play. In Flock phase, select to Flock.
-                                    onSelectBird(isSelected ? null : type);
-                                }
-                            }}
-                            onDragStart={(e) => {
-                                if (isCurrentTurn && isPlayPhase) {
-                                    onSelectBird(type);
-                                } else {
-                                    e.preventDefault(); // No dragging in flock phase
-                                }
-                            }}
-                        />
+
+                        {/* Main Interactive Card */}
+                        <div className="relative z-20">
+                            <Card 
+                                type={type} 
+                                selected={isSelected} 
+                                isDimmed={isCurrentTurn && isFlockPhase && !canFlock && isSelected} // Dim if trying to flock invalid
+                                onClick={() => {
+                                    if (isCurrentTurn) {
+                                        // In Play phase, select to Play. In Flock phase, select to Flock.
+                                        onSelectBird(isSelected ? null : type);
+                                    }
+                                }}
+                                onDragStart={(e) => {
+                                    if (isCurrentTurn && isPlayPhase) {
+                                        onSelectBird(type);
+                                    } else {
+                                        e.preventDefault(); // No dragging in flock phase
+                                    }
+                                }}
+                            />
+                        </div>
                     </div>
                 );
             })}

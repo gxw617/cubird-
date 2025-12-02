@@ -8,36 +8,110 @@ interface CardProps {
   onClick?: () => void;
   selected?: boolean;
   mini?: boolean;
-  stacked?: boolean;
+  stacked?: boolean; // For legacy row stacking if needed
   isGhost?: boolean; // For previewing placement
   isDimmed?: boolean; // For previewing capture
+  isStackPlaceholder?: boolean; // NEW: If true, renders a simplified version for the "stack" effect
   onDragStart?: (e: React.DragEvent) => void;
 }
 
-export const Card: React.FC<CardProps> = ({ type, onClick, selected, mini, stacked, isGhost, isDimmed, onDragStart }) => {
+export const Card: React.FC<CardProps> = ({ 
+  type, 
+  onClick, 
+  selected, 
+  mini, 
+  stacked, 
+  isGhost, 
+  isDimmed, 
+  isStackPlaceholder,
+  onDragStart 
+}) => {
   const bird = BIRD_DATA[type];
   
-  // Define a precise color palette for each bird type to ensure high quality UI
+  // Define a rich, full-card color palette
   const getPalette = (bgClass: string) => {
     switch (bgClass) {
       case 'bg-green-500': 
-        return { border: 'border-green-500', bg: 'bg-green-50', text: 'text-green-800', badgeText: 'text-green-600', ring: 'ring-green-300' };
+        return { 
+            base: 'bg-green-100', 
+            border: 'border-green-400', 
+            text: 'text-green-900', 
+            badgeBg: 'bg-green-300', 
+            badgeText: 'text-green-900',
+            nameBg: 'bg-green-200'
+        };
       case 'bg-indigo-600': 
-        return { border: 'border-indigo-600', bg: 'bg-indigo-50', text: 'text-indigo-800', badgeText: 'text-indigo-600', ring: 'ring-indigo-300' };
+        return { 
+            base: 'bg-indigo-100', 
+            border: 'border-indigo-400', 
+            text: 'text-indigo-900', 
+            badgeBg: 'bg-indigo-300', 
+            badgeText: 'text-indigo-900',
+            nameBg: 'bg-indigo-200'
+        };
       case 'bg-pink-500': 
-        return { border: 'border-pink-500', bg: 'bg-pink-50', text: 'text-pink-800', badgeText: 'text-pink-600', ring: 'ring-pink-300' };
+        return { 
+            base: 'bg-pink-100', 
+            border: 'border-pink-400', 
+            text: 'text-pink-900', 
+            badgeBg: 'bg-pink-300', 
+            badgeText: 'text-pink-900',
+            nameBg: 'bg-pink-200'
+        };
       case 'bg-orange-500': 
-        return { border: 'border-orange-500', bg: 'bg-orange-50', text: 'text-orange-900', badgeText: 'text-orange-600', ring: 'ring-orange-300' };
+        return { 
+            base: 'bg-orange-100', 
+            border: 'border-orange-400', 
+            text: 'text-orange-900', 
+            badgeBg: 'bg-orange-300', 
+            badgeText: 'text-orange-900',
+            nameBg: 'bg-orange-200'
+        };
       case 'bg-yellow-400': 
-        return { border: 'border-yellow-400', bg: 'bg-yellow-50', text: 'text-yellow-900', badgeText: 'text-yellow-600', ring: 'ring-yellow-300' };
+        return { 
+            base: 'bg-yellow-100', 
+            border: 'border-yellow-400', 
+            text: 'text-yellow-900', 
+            badgeBg: 'bg-yellow-300', 
+            badgeText: 'text-yellow-900',
+            nameBg: 'bg-yellow-200'
+        };
       case 'bg-slate-700': 
-        return { border: 'border-slate-700', bg: 'bg-slate-100', text: 'text-slate-800', badgeText: 'text-slate-600', ring: 'ring-slate-300' };
+        return { 
+            base: 'bg-slate-200', 
+            border: 'border-slate-400', 
+            text: 'text-slate-900', 
+            badgeBg: 'bg-slate-300', 
+            badgeText: 'text-slate-900',
+            nameBg: 'bg-slate-300'
+        };
       case 'bg-emerald-600': 
-        return { border: 'border-emerald-600', bg: 'bg-emerald-50', text: 'text-emerald-900', badgeText: 'text-emerald-600', ring: 'ring-emerald-300' };
+        return { 
+            base: 'bg-emerald-100', 
+            border: 'border-emerald-400', 
+            text: 'text-emerald-900', 
+            badgeBg: 'bg-emerald-300', 
+            badgeText: 'text-emerald-900',
+            nameBg: 'bg-emerald-200'
+        };
       case 'bg-red-500': 
-        return { border: 'border-red-500', bg: 'bg-red-50', text: 'text-red-900', badgeText: 'text-red-600', ring: 'ring-red-300' };
+        return { 
+            base: 'bg-red-100', 
+            border: 'border-red-400', 
+            text: 'text-red-900', 
+            badgeBg: 'bg-red-300', 
+            badgeText: 'text-red-900',
+            nameBg: 'bg-red-200'
+        };
       default: 
-        return { border: 'border-gray-400', bg: 'bg-gray-50', text: 'text-gray-800', badgeText: 'text-gray-600', ring: 'ring-gray-300' };
+        return { 
+            base: 'bg-gray-100', 
+            border: 'border-gray-300', 
+            text: 'text-gray-900', 
+            badgeBg: 'bg-gray-300', 
+            badgeText: 'text-gray-900',
+            nameBg: 'bg-gray-200'
+        };
     }
   };
 
@@ -49,38 +123,48 @@ export const Card: React.FC<CardProps> = ({ type, onClick, selected, mini, stack
   
   // State styles
   const stateClasses = isGhost 
-    ? 'opacity-50 border-dashed scale-95 bg-white' 
+    ? 'opacity-50 border-dashed bg-white' 
     : isDimmed 
-        ? 'opacity-40 grayscale scale-95' 
-        : `opacity-100 shadow-sm ${palette.bg}`;
+        ? 'opacity-40 grayscale contrast-125' 
+        : `opacity-100 shadow-[0_2px_0px_rgba(0,0,0,0.1)] ${palette.base}`; // Simplified shadow for flat look
 
+  // Selection is handled by parent for stacks usually, but if this specific card is selected
   const selectedClasses = selected 
-    ? 'ring-4 ring-offset-2 ring-yellow-400 -translate-y-4 z-20 shadow-xl' 
-    : !isGhost && !isDimmed ? 'hover:-translate-y-1 hover:shadow-md' : '';
+    ? 'ring-[4px] ring-offset-2 ring-stone-800 -translate-y-6 z-20 shadow-xl' 
+    : !isGhost && !isDimmed && !isStackPlaceholder && onClick ? 'hover:-translate-y-2 hover:shadow-md' : '';
 
   const stackClasses = stacked ? '-ml-16 hover:ml-2 hover:z-50 transition-all' : '';
 
   // Container sizing
-  // Increased height slightly to accommodate internal text comfortably
   const cardSizeClasses = mini 
-    ? 'w-10 h-14 rounded-md border-2' 
-    : 'w-24 h-32 rounded-xl border-[3px]';
+    ? 'w-14 h-14 rounded-xl border-2' // Square token for collection
+    : 'w-28 h-40 rounded-2xl border-[3px]'; // Slightly wider/taller for better layout
 
   // Base container
   const baseClasses = `
-    relative flex flex-col items-center justify-between
-    transition-all duration-200 select-none overflow-hidden
+    relative flex flex-col items-center
+    transition-all duration-300 select-none overflow-hidden
     ${palette.border} ${stateClasses} ${cursorClass} ${dragClass} ${cardSizeClasses}
   `;
 
-  // --- Mini Card Render (Collection) ---
+  // --- Stack Placeholder Render ---
+  // Just the shape and color, no content
+  if (isStackPlaceholder) {
+      return (
+          <div className={`${baseClasses} shadow-sm opacity-90`} />
+      );
+  }
+
+  // --- Mini Card Render (Collection Token) ---
   if (mini) {
     return (
       <div 
-        className={`${baseClasses} ${selectedClasses} justify-center bg-white`} 
+        className={`${baseClasses} ${selectedClasses} justify-center`} 
         onClick={onClick}
       >
-        <span className="text-xl drop-shadow-sm">{bird.emoji}</span>
+        <span className="text-3xl leading-none filter drop-shadow-sm select-none transform transition-transform hover:scale-110">
+            {bird.emoji}
+        </span>
       </div>
     );
   }
@@ -95,41 +179,39 @@ export const Card: React.FC<CardProps> = ({ type, onClick, selected, mini, stack
         className={baseClasses}
         onClick={onClick}
       >
-        {/* Top Right: Flock Badge (Embedded) */}
+        {/* Top Right: Flock Badge (Merged Look) */}
         {!isGhost && (
             <div className={`
-                absolute top-1.5 right-1.5 px-1.5 py-0.5 
-                rounded-md bg-white/80 backdrop-blur-[2px]
-                text-[9px] font-black tracking-tighter z-10 
-                shadow-sm border border-white/50
-                ${palette.badgeText}
+                absolute top-0 right-0 pt-1 pb-1.5 pl-2 pr-1.5
+                rounded-bl-2xl ${palette.badgeBg} 
+                text-[11px] font-black tracking-tighter z-10 
+                ${palette.badgeText} leading-none flex flex-col items-end
             `}>
-                {bird.smallFlock}/{bird.bigFlock}
+                <span>{bird.smallFlock}/{bird.bigFlock}</span>
             </div>
         )}
 
-        {/* Center: Emoji */}
-        <div className="flex-1 flex items-center justify-center w-full pt-1 pb-4">
-          <span className="text-5xl filter drop-shadow-sm transform group-hover:scale-110 transition-transform duration-300">
+        {/* Center: Emoji (Large & Centered) */}
+        <div className="flex-1 flex items-center justify-center w-full pt-4 pb-6">
+          <span className="text-6xl filter drop-shadow-sm transform group-hover:scale-110 group-active:scale-95 transition-transform duration-300 select-none">
               {bird.emoji}
           </span>
           
           {isDimmed && (
-              <div className="absolute inset-0 flex items-center justify-center z-10 bg-white/20">
-                  <div className="text-red-600 font-bold -rotate-12 text-[10px] border-2 border-red-500 rounded bg-white px-1 py-0.5 shadow-sm whitespace-nowrap">
+              <div className="absolute inset-0 flex items-center justify-center z-10 bg-white/40 backdrop-blur-[1px]">
+                  <div className="text-stone-800 font-black -rotate-12 text-[10px] border-2 border-stone-800 rounded bg-white px-2 py-1 shadow-md whitespace-nowrap">
                       TAKEN
                   </div>
               </div>
           )}
         </div>
 
-        {/* Bottom: Name (Embedded) */}
+        {/* Bottom: Name (Merged Look) */}
         {!isGhost && (
             <div className={`
-                absolute bottom-0 w-full text-center py-1
-                text-[9px] font-bold uppercase tracking-wide
-                bg-white/40 backdrop-blur-[1px]
-                ${palette.text}
+                absolute bottom-0 w-full text-center py-2
+                text-[11px] font-extrabold uppercase tracking-widest
+                ${palette.nameBg} ${palette.text}
             `}>
                 {bird.name}
             </div>
