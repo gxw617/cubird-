@@ -3,52 +3,30 @@ import { initializeApp } from "firebase/app";
 import { getDatabase, ref, set, onValue, get, child, update, remove } from "firebase/database";
 import { GameState } from "../types";
 
-// Firebase Config - Must be set in Environment Variables (e.g. .env.local or Vercel)
-// We use '|| ""' to ensure they are strings, preventing undefined issues
+// Firebase Config - Hardcoded to ensure connection works immediately
 const firebaseConfig = {
-  apiKey: process.env.FIREBASE_API_KEY || "",
-  authDomain: process.env.FIREBASE_AUTH_DOMAIN || "",
-  databaseURL: process.env.FIREBASE_DATABASE_URL || "",
-  projectId: process.env.FIREBASE_PROJECT_ID || "",
-  storageBucket: process.env.FIREBASE_STORAGE_BUCKET || "",
-  messagingSenderId: process.env.FIREBASE_MESSAGING_SENDER_ID || "",
-  appId: process.env.FIREBASE_APP_ID || ""
+  apiKey: "AIzaSyDJ6R9oSVOjUZvjXfvTzdHTQI6jYqYWf8Q",
+  authDomain: "cubirds-aeeac.firebaseapp.com",
+  databaseURL: "https://cubirds-aeeac-default-rtdb.europe-west1.firebasedatabase.app",
+  projectId: "cubirds-aeeac",
+  storageBucket: "cubirds-aeeac.firebasestorage.app",
+  messagingSenderId: "602317579938",
+  appId: "1:602317579938:web:70b21208029f012ccb59fb"
 };
 
 let db: any = null;
 
-// Helper: Check if critical config keys are present
-const isConfigValid = () => {
-    return (
-        firebaseConfig.apiKey.length > 0 &&
-        firebaseConfig.projectId.length > 0 &&
-        firebaseConfig.databaseURL.length > 0
-    );
-};
-
-if (isConfigValid()) {
-    try {
-        const app = initializeApp(firebaseConfig);
-        db = getDatabase(app);
-        console.log("Firebase initialized successfully");
-    } catch (e) {
-        console.warn("Firebase config appeared valid but initialization failed:", e);
-    }
-} else {
-    // Graceful fallback: Don't crash, just disable online features
-    console.warn("Firebase configuration missing or incomplete. Online features are disabled.");
-    // Log missing keys for debugging (checking length to avoid logging secrets)
-    const missing = Object.entries(firebaseConfig)
-        .filter(([_, val]) => !val || val.length === 0)
-        .map(([key]) => key);
-    if (missing.length > 0) {
-        console.debug("Missing env vars:", missing.join(", "));
-    }
+try {
+    const app = initializeApp(firebaseConfig);
+    db = getDatabase(app);
+    console.log("Firebase initialized successfully with provided config");
+} catch (e) {
+    console.error("Firebase initialization failed:", e);
 }
 
 export const createRoom = async (roomId: string, initialState: GameState): Promise<boolean> => {
     if (!db) {
-        console.error("Cannot create room: Firebase is not configured.");
+        console.error("Cannot create room: Firebase not initialized.");
         return false;
     }
     try {
@@ -68,7 +46,7 @@ export const createRoom = async (roomId: string, initialState: GameState): Promi
 
 export const joinRoom = async (roomId: string): Promise<{ success: boolean; gameState?: GameState }> => {
     if (!db) {
-        console.error("Cannot join room: Firebase is not configured.");
+        console.error("Cannot join room: Firebase not initialized.");
         return { success: false };
     }
     const dbRef = ref(db);
