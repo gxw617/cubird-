@@ -7,7 +7,7 @@ export const BIRD_DATA: Record<BirdType, BirdConfig> = {
   [BirdType.TOUCAN]: { id: BirdType.TOUCAN, name: 'Toucan', total: 10, smallFlock: 3, bigFlock: 4, color: 'bg-orange-500', emoji: '🦤' }, // Dodo used as Toucan proxy or similar
   [BirdType.DUCK]: { id: BirdType.DUCK, name: 'Duck', total: 13, smallFlock: 4, bigFlock: 6, color: 'bg-yellow-400', emoji: '🦆' },
   [BirdType.MAGPIE]: { id: BirdType.MAGPIE, name: 'Magpie', total: 17, smallFlock: 6, bigFlock: 9, color: 'bg-slate-700', emoji: '🐧' }, // Penguin/Magpie
-  [BirdType.REED_WARBLER]: { id: BirdType.REED_WARBLER, name: 'Reed Warbler', total: 20, smallFlock: 6, bigFlock: 9, color: 'bg-emerald-600', emoji: '🐦' },
+  [BirdType.REED_WARBLER]: { id: BirdType.REED_WARBLER, name: 'Reed Warbler', total: 20, smallFlock: 6, bigFlock: 9, color: 'bg-blue-500', emoji: '🐦' },
   [BirdType.ROBIN]: { id: BirdType.ROBIN, name: 'Robin', total: 20, smallFlock: 6, bigFlock: 9, color: 'bg-red-500', emoji: '🐦‍🔥' },
 };
 

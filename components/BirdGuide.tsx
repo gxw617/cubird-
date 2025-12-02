@@ -1,3 +1,4 @@
+
 import React from 'react';
 import { BIRD_DATA } from '../constants';
 
@@ -7,6 +8,21 @@ interface BirdGuideProps {
 }
 
 export const BirdGuide: React.FC<BirdGuideProps> = ({ className, onClose }) => {
+  
+  // Helper to get a nice pastel background for the text badge based on the bird's main color
+  const getBadgeStyle = (colorClass: string) => {
+    if (colorClass.includes('green')) return 'bg-green-100 text-green-800';
+    if (colorClass.includes('indigo')) return 'bg-indigo-100 text-indigo-800';
+    if (colorClass.includes('pink')) return 'bg-pink-100 text-pink-800';
+    if (colorClass.includes('orange')) return 'bg-orange-100 text-orange-800';
+    if (colorClass.includes('yellow')) return 'bg-yellow-100 text-yellow-800';
+    if (colorClass.includes('slate')) return 'bg-slate-200 text-slate-800';
+    if (colorClass.includes('emerald')) return 'bg-emerald-100 text-emerald-800';
+    if (colorClass.includes('red')) return 'bg-red-100 text-red-800';
+    if (colorClass.includes('blue')) return 'bg-blue-100 text-blue-800';
+    return 'bg-gray-100 text-gray-800';
+  };
+
   return (
     <div className={`bg-white rounded-xl shadow-lg border border-stone-200 overflow-hidden flex flex-col ${className}`}>
       <div className="bg-stone-800 text-white px-4 py-3 border-b border-stone-700 flex justify-between items-center">
@@ -46,7 +62,12 @@ export const BirdGuide: React.FC<BirdGuideProps> = ({ className, onClose }) => {
                         <tr key={bird.id} className="hover:bg-stone-50">
                             <td className="py-2 pl-1 flex items-center gap-2 font-medium text-stone-700">
                                 <span className="text-lg">{bird.emoji}</span>
-                                <span className="truncate max-w-[80px]" title={bird.name}>{bird.name}</span>
+                                <span 
+                                  className={`px-2 py-0.5 rounded text-xs font-bold truncate max-w-[100px] ${getBadgeStyle(bird.color)}`} 
+                                  title={bird.name}
+                                >
+                                    {bird.name}
+                                </span>
                             </td>
                             <td className="text-center text-stone-500 font-mono">{bird.total}</td>
                             <td className="text-center font-bold text-orange-500">{bird.smallFlock}</td>

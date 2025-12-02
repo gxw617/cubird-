@@ -3,6 +3,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { GameState, MoveType, BirdType, GameMove, MoveOutcome, TurnPhase } from './types';
 import { initializeGame, applyMove } from './services/gameLogic';
 import { getAiMove, initGemini } from './services/geminiService';
+import { playSound } from './services/audioService';
 import { Row } from './components/Row';
 import { PlayerArea } from './components/PlayerArea';
 import { Collection } from './components/Collection';
@@ -12,10 +13,12 @@ import { BIRD_DATA } from './constants';
 const App: React.FC = () => {
   const [gameState, setGameState] = useState<GameState | null>(null);
   const [selectedBird, setSelectedBird] = useState<BirdType | null>(null);
-  const [pendingMove, setPendingMove] = useState<{ move: GameMove, outcome: MoveOutcome } | null>(null);
   const [showRules, setShowRules] = useState(false);
   const [showGuideMobile, setShowGuideMobile] = useState(false);
   const [showQuitConfirm, setShowQuitConfirm] = useState(false);
+  
+  // New state to handle "No Capture -> Draw 2" confirmation flow
+  const [drawConfirmation, setDrawConfirmation] = useState<{ outcome: MoveOutcome } | null>(null);
 
   // Initialize API on load
   useEffect(() => {
@@ -23,17 +26,17 @@ const App: React.FC = () => {
   }, []);
 
   const startGame = (ai: boolean) => {
+    playSound('click');
     const players = ai ? ['You', 'Gemini AI'] : ['Player 1', 'Player 2'];
     setGameState(initializeGame(players, ai));
     setSelectedBird(null);
-    setPendingMove(null);
+    setDrawConfirmation(null);
   };
 
   const quitGame = () => {
-    // Reset everything
     setGameState(null);
-    setPendingMove(null);
     setSelectedBird(null);
+    setDrawConfirmation(null);
     setShowQuitConfirm(false);
   };
 
@@ -65,6 +68,12 @@ const App: React.FC = () => {
                     side: 'LEFT'
                 });
             }
+
+            // AI Sounds
+            if (moveResult.captured.length > 0) playSound('capture');
+            else if (moveResult.drawn > 0) playSound('draw');
+            else playSound('pop');
+
             return { ...moveResult.newState, isAiThinking: false };
         });
     } else if (currentState.turnPhase === TurnPhase.FLOCK_OR_PASS) {
@@ -81,13 +90,14 @@ const App: React.FC = () => {
 
                 if (flockable) {
                     const outcome = applyMove(prev, { type: MoveType.FLOCK, birdType: flockable as BirdType });
+                    playSound('success');
                     return outcome.newState;
                 } else {
                     const outcome = applyMove(prev, { type: MoveType.PASS });
                     return outcome.newState;
                 }
             });
-        }, 1000); 
+        }, 1500); 
     }
 
   }, []);
@@ -101,6 +111,7 @@ const App: React.FC = () => {
     }
   }, [gameState, executeAiTurn]);
 
+  // Handle playing a card to a row
   const handleSelectSide = (rowIndex: number, side: 'LEFT' | 'RIGHT') => {
     if (!gameState || !selectedBird || gameState.turnPhase !== TurnPhase.PLAY) return;
     
@@ -111,19 +122,52 @@ const App: React.FC = () => {
       side
     };
     
+    // Apply move immediately to get the outcome
     const outcome = applyMove(gameState, move);
-    setPendingMove({ move, outcome });
+
+    if (outcome.captured.length > 0) {
+        // Case 1: Capture successful. Apply immediately.
+        playSound('capture');
+        setGameState(outcome.newState);
+        setSelectedBird(null);
+    } else {
+        // Case 2: No capture (Draw 2). Show confirmation modal.
+        // The 'outcome.newState' ALREADY has the 2 cards added to the player's hand via gameLogic.
+        // We hold this state in 'drawConfirmation' until user decides to Confirm or Skip.
+        playSound('pop');
+        setDrawConfirmation({ outcome });
+    }
   };
 
-  const confirmPendingMove = () => {
-    if (!pendingMove) return;
-    setGameState(pendingMove.outcome.newState);
-    setPendingMove(null);
+  const confirmDraw = () => {
+      if (!drawConfirmation) return;
+      playSound('draw');
+      setGameState(drawConfirmation.outcome.newState);
+      setDrawConfirmation(null);
+      setSelectedBird(null);
+  };
+
+  const skipDraw = () => {
+    if (!drawConfirmation) return;
+    
+    // User chose to Skip drawing cards.
+    // The outcome.newState has the 2 cards added. We need to revert that specific part.
+    // Logic: Remove the last 2 cards from the current player's hand in the NEW state.
+    
+    const modifiedState = JSON.parse(JSON.stringify(drawConfirmation.outcome.newState)) as GameState;
+    const player = modifiedState.players[modifiedState.currentPlayerIndex];
+    
+    // Remove last 2 cards (which were the drawn ones)
+    // NOTE: applyMove pushes drawn cards to end.
+    if (drawConfirmation.outcome.drawn === 2) {
+        player.hand.pop();
+        player.hand.pop();
+        modifiedState.lastActionLog.push("...but skipped drawing cards.");
+    }
+
+    setGameState(modifiedState);
+    setDrawConfirmation(null);
     setSelectedBird(null);
-  };
-
-  const cancelPendingMove = () => {
-    setPendingMove(null);
   };
 
   const handleFlock = () => {
@@ -132,12 +176,14 @@ const App: React.FC = () => {
       type: MoveType.FLOCK,
       birdType: selectedBird
     });
+    playSound('success');
     setGameState(outcome.newState);
     setSelectedBird(null); 
   };
 
   const handlePass = () => {
       if (!gameState) return;
+      playSound('click');
       const outcome = applyMove(gameState, { type: MoveType.PASS });
       setGameState(outcome.newState);
       setSelectedBird(null);
@@ -167,7 +213,7 @@ const App: React.FC = () => {
         </div>
         
         <button 
-            onClick={() => setShowRules(true)}
+            onClick={() => { playSound('click'); setShowRules(true); }}
             className="mt-8 text-stone-400 font-bold hover:text-stone-600 hover:underline"
         >
             How to Play?
@@ -208,7 +254,13 @@ const App: React.FC = () => {
   }
 
   const currentPlayer = gameState.players[gameState.currentPlayerIndex];
+  // Determine if it's currently the local human's turn to interact
   const isMyTurn = !currentPlayer.isAi && !gameState.isAiThinking;
+  
+  // Should the hand be hidden? (AI hand, or Pass&Play opponent waiting)
+  // For Pass & Play, we might want to hide it too, but simpler for now:
+  // If AI, always hide.
+  const isHandHidden = currentPlayer.isAi; 
 
   return (
     <div className="min-h-screen bg-stone-50 pb-[340px] flex flex-col md:flex-row">
@@ -259,7 +311,7 @@ const App: React.FC = () => {
         <Collection players={gameState.players} currentPlayerId={gameState.currentPlayerIndex} />
 
         {/* Action Log */}
-        {!pendingMove && (
+        {!drawConfirmation && (
             <div className="w-full max-w-4xl text-center mb-4 h-8 flex items-center justify-center">
                <span className="inline-block bg-white border border-stone-200 text-stone-500 px-4 py-1.5 rounded-full text-xs font-medium shadow-sm transition-opacity duration-300">
                     {gameState.lastActionLog[gameState.lastActionLog.length - 1]}
@@ -277,7 +329,7 @@ const App: React.FC = () => {
                     onSelectSide={handleSelectSide}
                     isCurrentPlayerTurn={isMyTurn && gameState.turnPhase === TurnPhase.PLAY}
                     selectedBird={selectedBird}
-                    pendingMove={pendingMove}
+                    pendingMove={null} // Removed preview
                 />
             ))}
         </div>
@@ -307,41 +359,30 @@ const App: React.FC = () => {
         </div>
       )}
 
-      {/* Move Confirmation Overlay */}
-      {pendingMove && (
+      {/* Draw 2 Confirmation Overlay */}
+      {drawConfirmation && (
          <div className="fixed inset-0 z-[60] flex items-center justify-center bg-stone-900/40 backdrop-blur-sm px-4">
             <div className="bg-white p-6 rounded-3xl shadow-2xl border-4 border-stone-100 w-full max-w-sm animate-bounce-in transform">
-                <h3 className="text-center text-xl font-black text-stone-800 mb-2 uppercase tracking-tight">Confirm Move</h3>
+                <h3 className="text-center text-xl font-black text-stone-800 mb-2 uppercase tracking-tight">No Capture!</h3>
                 
-                <div className="bg-stone-50 rounded-xl p-4 mb-6 text-center">
-                    {pendingMove.outcome.captured.length > 0 ? (
-                       <div className="flex flex-col items-center gap-2">
-                           <span className="text-sm font-bold text-stone-400 uppercase">You will capture</span>
-                           <span className="text-3xl font-black text-green-500">{pendingMove.outcome.captured.length} Birds</span>
-                           <div className="flex -space-x-2 mt-2">
-                               {pendingMove.outcome.captured.slice(0, 5).map((b, i) => (
-                                   <div key={i} className="w-8 h-8 rounded-full bg-white shadow-md border flex items-center justify-center text-sm">{b[0]}</div>
-                               ))}
-                           </div>
-                       </div>
-                    ) : (
-                       <div className="flex flex-col items-center gap-2">
-                           <span className="text-sm font-bold text-stone-400 uppercase">No capture</span>
-                           <span className="text-3xl font-black text-orange-400">Draw 2 Cards</span>
-                       </div>
-                   )}
+                <div className="bg-orange-50 rounded-xl p-4 mb-6 text-center">
+                   <div className="flex flex-col items-center gap-2">
+                       <span className="text-sm font-bold text-stone-400 uppercase">You must</span>
+                       <span className="text-3xl font-black text-orange-400">Draw 2 Cards</span>
+                       <p className="text-xs text-stone-400 mt-2">Or skip if you don't want them.</p>
+                   </div>
                 </div>
 
                 <div className="flex gap-3">
                     <button 
-                        onClick={cancelPendingMove}
+                        onClick={skipDraw}
                         className="flex-1 py-3 rounded-xl font-bold text-stone-500 bg-stone-100 hover:bg-stone-200 transition-colors"
                     >
-                        Cancel
+                        Skip
                     </button>
                     <button 
-                        onClick={confirmPendingMove}
-                        className="flex-1 py-3 rounded-xl font-black bg-green-500 text-white hover:bg-green-600 shadow-lg hover:translate-y-[-2px] transition-all"
+                        onClick={confirmDraw}
+                        className="flex-1 py-3 rounded-xl font-black bg-orange-400 text-white hover:bg-orange-500 shadow-lg hover:translate-y-[-2px] transition-all"
                     >
                         CONFIRM
                     </button>
@@ -383,15 +424,16 @@ const App: React.FC = () => {
       )}
 
       {/* Player Area */}
-      <div className={pendingMove ? 'pointer-events-none opacity-40 blur-[2px] transition-all duration-300' : 'transition-all duration-300'}>
+      <div className={drawConfirmation ? 'pointer-events-none opacity-40 blur-[2px] transition-all duration-300' : 'transition-all duration-300'}>
         <PlayerArea 
             player={currentPlayer} 
             isCurrentTurn={isMyTurn}
             phase={gameState.turnPhase}
             selectedBird={selectedBird}
-            onSelectBird={setSelectedBird}
+            onSelectBird={(b) => { playSound('click'); setSelectedBird(b); }}
             onFlock={handleFlock}
             onPass={handlePass}
+            isHidden={isHandHidden}
         />
       </div>
     </div>

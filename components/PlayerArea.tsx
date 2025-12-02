@@ -12,9 +12,19 @@ interface PlayerAreaProps {
   onSelectBird: (bird: BirdType | null) => void;
   onFlock: () => void;
   onPass: () => void;
+  isHidden?: boolean; // New prop to hide cards (for AI/Opponent)
 }
 
-export const PlayerArea: React.FC<PlayerAreaProps> = ({ player, isCurrentTurn, phase, selectedBird, onSelectBird, onFlock, onPass }) => {
+export const PlayerArea: React.FC<PlayerAreaProps> = ({ 
+    player, 
+    isCurrentTurn, 
+    phase, 
+    selectedBird, 
+    onSelectBird, 
+    onFlock, 
+    onPass,
+    isHidden
+}) => {
   
   // Group hand by bird type
   const groupedHand = useMemo(() => {
@@ -62,17 +72,17 @@ export const PlayerArea: React.FC<PlayerAreaProps> = ({ player, isCurrentTurn, p
                 const stackDepth = Math.min(count - 1, 2); 
                 
                 return (
-                    <div key={type} className={`relative group mx-3 transition-transform ${isCurrentTurn ? 'hover:-translate-y-2' : ''}`}>
+                    <div key={type} className={`relative group mx-3 transition-transform ${isCurrentTurn && !isHidden ? 'hover:-translate-y-2' : ''}`}>
                         
                         {/* Visual Stack Layers (Underlays) */}
                         {stackDepth >= 1 && (
                             <div className="absolute top-0 left-0 w-full h-full transform -rotate-6 -translate-x-3 translate-y-1 z-0">
-                                <Card type={type} isStackPlaceholder />
+                                <Card type={type} isStackPlaceholder isFaceDown={isHidden} />
                             </div>
                         )}
                         {stackDepth >= 2 && (
                             <div className="absolute top-0 left-0 w-full h-full transform -rotate-3 -translate-x-1.5 translate-y-0.5 z-10">
-                                <Card type={type} isStackPlaceholder />
+                                <Card type={type} isStackPlaceholder isFaceDown={isHidden} />
                             </div>
                         )}
 
@@ -92,18 +102,18 @@ export const PlayerArea: React.FC<PlayerAreaProps> = ({ player, isCurrentTurn, p
                             <Card 
                                 type={type} 
                                 selected={isSelected} 
-                                isDimmed={isCurrentTurn && isFlockPhase && !canFlock && isSelected} // Dim if trying to flock invalid
+                                isFaceDown={isHidden}
+                                isDimmed={!isHidden && isCurrentTurn && isFlockPhase && !canFlock && isSelected}
                                 onClick={() => {
-                                    if (isCurrentTurn) {
-                                        // In Play phase, select to Play. In Flock phase, select to Flock.
+                                    if (isCurrentTurn && !isHidden) {
                                         onSelectBird(isSelected ? null : type);
                                     }
                                 }}
                                 onDragStart={(e) => {
-                                    if (isCurrentTurn && isPlayPhase) {
+                                    if (isCurrentTurn && isPlayPhase && !isHidden) {
                                         onSelectBird(type);
                                     } else {
-                                        e.preventDefault(); // No dragging in flock phase
+                                        e.preventDefault();
                                     }
                                 }}
                             />
@@ -121,10 +131,10 @@ export const PlayerArea: React.FC<PlayerAreaProps> = ({ player, isCurrentTurn, p
                  <div className="flex flex-col gap-2 w-full">
                      <button 
                         onClick={onFlock}
-                        disabled={!canFlock}
+                        disabled={!canFlock || isHidden}
                         className={`
                             w-full px-6 py-3 rounded-xl font-bold shadow-sm transition-all flex items-center justify-center
-                            ${canFlock 
+                            ${canFlock && !isHidden
                                 ? 'bg-stone-800 text-white hover:bg-black active:scale-95 shadow-md' 
                                 : 'bg-stone-200 text-stone-400 cursor-not-allowed border border-stone-300'}
                         `}
@@ -133,14 +143,15 @@ export const PlayerArea: React.FC<PlayerAreaProps> = ({ player, isCurrentTurn, p
                      </button>
                      <button 
                         onClick={onPass}
-                        className="w-full px-6 py-2 rounded-xl font-bold border-2 border-stone-300 text-stone-500 hover:bg-stone-100 active:scale-95 transition-all"
+                        disabled={isHidden}
+                        className="w-full px-6 py-2 rounded-xl font-bold border-2 border-stone-300 text-stone-500 hover:bg-stone-100 active:scale-95 transition-all disabled:opacity-50"
                      >
                         End Turn
                      </button>
                  </div>
              ) : (
                  <div className="w-full px-6 py-4 rounded-xl border-2 border-dashed border-stone-300 text-stone-400 text-center font-bold text-sm bg-stone-50">
-                    {selectedBird ? 'Drag to Row →' : 'Select Card'}
+                    {isHidden ? 'Opponent Playing...' : selectedBird ? 'Click Row or Drag →' : 'Select Card'}
                  </div>
              )}
              
