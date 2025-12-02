@@ -21,10 +21,15 @@ export const Collection: React.FC<CollectionProps> = ({ players, currentPlayerId
             `}
           >
             <div className="flex justify-between items-center mb-4 border-b border-black/5 pb-2">
-                <div className="flex items-center gap-2">
-                    <span className="font-black text-stone-700 text-sm uppercase tracking-wide">
+                <div className="flex items-center gap-3">
+                    <span className="font-black text-stone-700 text-sm uppercase tracking-wide flex items-center gap-2">
                         {player.name} {player.isAi ? '🤖' : '👤'}
                     </span>
+                    {/* Hand Count Badge */}
+                    <span className="text-xs font-bold text-stone-500 bg-stone-200 px-2 py-0.5 rounded-md flex items-center gap-1" title="Cards in hand">
+                        ✋ {player.hand.length}
+                    </span>
+                    
                     {player.id === currentPlayerId && <span className="text-[10px] bg-green-100 text-green-700 font-bold px-1.5 py-0.5 rounded">TURN</span>}
                 </div>
                 <span className="text-xs bg-stone-100 text-stone-600 font-bold px-3 py-1.5 rounded-lg border border-stone-200">

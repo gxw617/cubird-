@@ -1,3 +1,4 @@
+
 import React, { useMemo, useEffect } from 'react';
 import { Player, BirdType, TurnPhase } from '../types';
 import { Card } from './Card';
@@ -40,7 +41,7 @@ export const PlayerArea: React.FC<PlayerAreaProps> = ({
     return groups;
   }, [player.hand]);
 
-  // Check how many flocks are available
+  // Check how many flocks are available total
   const flockOptions = useMemo(() => {
     let options = 0;
     Object.keys(groupedHand).forEach((key) => {
@@ -53,7 +54,11 @@ export const PlayerArea: React.FC<PlayerAreaProps> = ({
     return options;
   }, [groupedHand]);
 
-  const canFlock = useMemo(() => {
+  // Is there AT LEAST one flockable bird in hand?
+  const hasAnyFlockable = flockOptions > 0;
+
+  // Can the CURRENTLY selected bird be flocked?
+  const canCurrentSelectionFlock = useMemo(() => {
     if (!selectedBird) return false;
     const count = groupedHand[selectedBird] || 0;
     const config = BIRD_DATA[selectedBird];
@@ -71,10 +76,6 @@ export const PlayerArea: React.FC<PlayerAreaProps> = ({
 
   const isPlayPhase = phase === TurnPhase.PLAY;
   const isFlockPhase = phase === TurnPhase.FLOCK_OR_PASS;
-
-  // Render logic specifically for AI/Hidden vs Human
-  // If isHidden is true (AI), we show card backs.
-  // If isHidden is false (Human), we show real cards.
 
   return (
     <div className={`fixed bottom-0 left-0 right-0 z-30 transition-all duration-300 ${isCurrentTurn ? 'bg-white/95 shadow-[0_-4px_20px_rgba(0,0,0,0.05)] border-t border-stone-200 pb-2' : 'bg-stone-100/90 pb-2 border-t border-stone-200'}`}>
@@ -109,6 +110,7 @@ export const PlayerArea: React.FC<PlayerAreaProps> = ({
                     const count = groupedHand[type] || 0;
                     const isSelected = selectedBird === type;
                     const isFlocking = flockingBirdType === type;
+                    const canThisBirdFlock = count >= BIRD_DATA[type].smallFlock;
                     
                     const stackDepth = Math.min(count - 1, 2); 
                     
@@ -142,13 +144,18 @@ export const PlayerArea: React.FC<PlayerAreaProps> = ({
                                     {count}
                                 </div>
                             )}
+                            
+                            {/* Flock Indicator Dot */}
+                            {isFlockPhase && canThisBirdFlock && !isSelected && !isDisabled && (
+                                <div className="absolute -bottom-2 left-1/2 -translate-x-1/2 w-2 h-2 bg-emerald-500 rounded-full animate-ping z-40"></div>
+                            )}
 
                             {/* Main Card */}
                             <div className="relative z-20">
                                 <Card 
                                     type={type} 
                                     selected={isSelected} 
-                                    isDimmed={!isDisabled && isFlockPhase && !canFlock && isSelected}
+                                    isDimmed={!isDisabled && isFlockPhase && isSelected && !canCurrentSelectionFlock}
                                     isFlying={isFlocking}
                                     onClick={() => {
                                         if (!isDisabled) {
@@ -178,15 +185,21 @@ export const PlayerArea: React.FC<PlayerAreaProps> = ({
                  <div className="flex flex-col gap-2 w-full">
                      <button 
                         onClick={onFlock}
-                        disabled={!canFlock || isHidden}
+                        // Enabled if we have a valid selection OR if we want to show the button as "hint" (though clicking needs logic)
+                        // Actually, we disable click if !canCurrentSelectionFlock, but we animate if hasAnyFlockable
+                        disabled={!canCurrentSelectionFlock || isHidden}
                         className={`
-                            w-full px-6 py-3 rounded-xl font-bold shadow-sm transition-all flex items-center justify-center
-                            ${canFlock && !isHidden
-                                ? 'bg-stone-800 text-white hover:bg-black active:scale-95 shadow-md animate-heartbeat' 
+                            w-full px-6 py-3 rounded-xl font-bold shadow-sm transition-all flex items-center justify-center relative overflow-hidden
+                            ${canCurrentSelectionFlock && !isHidden
+                                ? 'bg-stone-800 text-white hover:bg-black active:scale-95 shadow-md' 
                                 : 'bg-stone-200 text-stone-400 cursor-not-allowed border border-stone-300'}
+                            ${hasAnyFlockable && !canCurrentSelectionFlock && !isHidden ? 'animate-heartbeat ring-2 ring-emerald-400 ring-offset-2' : ''}
                         `}
                      >
-                        FLOCK {canFlock && selectedBird ? `(+${groupedHand[selectedBird]! >= BIRD_DATA[selectedBird].bigFlock ? 2 : 1})` : ''}
+                        {/* Dynamic Label */}
+                        {canCurrentSelectionFlock 
+                            ? `FLOCK (+${groupedHand[selectedBird!]! >= BIRD_DATA[selectedBird!].bigFlock ? 2 : 1})`
+                            : hasAnyFlockable ? "Select a Set!" : "No Flocks"}
                      </button>
                      <div className="flex items-center gap-2">
                          <button 

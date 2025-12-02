@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { GameState, MoveType, BirdType, GameMove, MoveOutcome, TurnPhase } from './types';
 import { initializeGame, applyMove } from './services/gameLogic';
@@ -16,6 +17,11 @@ const App: React.FC = () => {
   const [showGuideMobile, setShowGuideMobile] = useState(false);
   const [showQuitConfirm, setShowQuitConfirm] = useState(false);
   
+  // Online / Lobby State
+  const [onlineMenuState, setOnlineMenuState] = useState<'NONE' | 'CREATE' | 'JOIN'>('NONE');
+  const [roomCode, setRoomCode] = useState<string>('');
+  const [joinCodeInput, setJoinCodeInput] = useState<string>('');
+
   // Auto-pass timer state
   const [countdown, setCountdown] = useState<number | null>(null);
   const [timerDuration, setTimerDuration] = useState<number>(10);
@@ -40,6 +46,20 @@ const App: React.FC = () => {
     setSelectedBird(null);
     setDrawConfirmation(null);
     setViewBoardMode(false);
+    setOnlineMenuState('NONE'); // Reset lobby state
+  };
+
+  const handleCreateRoom = () => {
+      playSound('click');
+      const code = Math.random().toString(36).substring(2, 6).toUpperCase();
+      setRoomCode(code);
+      setOnlineMenuState('CREATE');
+  };
+
+  const handleJoinRoom = () => {
+      playSound('click');
+      setOnlineMenuState('JOIN');
+      setJoinCodeInput('');
   };
 
   const quitGame = () => {
@@ -177,8 +197,6 @@ const App: React.FC = () => {
         setDrawConfirmation({ outcome });
     } else {
         // Round Ended immediately (0 drawn)
-        // Hand emptied -> Deal New Hand -> Shift Player -> Turn Phase Reset
-        // We do NOT need to ask for draw 2.
         setGameState(outcome.newState);
         setSelectedBird(null);
     }
@@ -223,6 +241,7 @@ const App: React.FC = () => {
     }, 600); // 600ms matches animation
   };
 
+  // --- RENDER START SCREEN / LOBBY ---
   if (!gameState) {
     return (
       <div className="min-h-screen flex flex-col items-center justify-center bg-stone-100 p-4 font-sans text-stone-800">
@@ -231,20 +250,79 @@ const App: React.FC = () => {
         </h1>
         <p className="text-stone-500 mb-12 font-medium text-xl">The strategic card game of bird collection.</p>
 
-        <div className="bg-white p-8 rounded-3xl shadow-2xl max-w-md w-full border-4 border-white ring-1 ring-stone-200">
-           <button 
-             onClick={() => startGame(false)}
-             className="w-full bg-stone-800 hover:bg-stone-900 text-white font-bold py-5 rounded-2xl mb-4 transition-all shadow-md hover:-translate-y-1 flex items-center justify-center gap-3 text-lg"
-           >
-             <span className="text-2xl">👥</span> Pass & Play
-           </button>
-           <button 
-             onClick={() => startGame(true)}
-             className="w-full bg-gradient-to-r from-blue-500 to-indigo-600 hover:from-blue-600 hover:to-indigo-700 text-white font-bold py-5 rounded-2xl transition-all shadow-md hover:-translate-y-1 flex items-center justify-center gap-3 text-lg"
-           >
-             <span className="text-2xl">✨</span> Play vs AI
-           </button>
-        </div>
+        {onlineMenuState === 'NONE' && (
+            <div className="bg-white p-8 rounded-3xl shadow-2xl max-w-md w-full border-4 border-white ring-1 ring-stone-200 animate-bounce-in">
+                <button 
+                    onClick={() => startGame(false)}
+                    className="w-full bg-stone-800 hover:bg-stone-900 text-white font-bold py-5 rounded-2xl mb-4 transition-all shadow-md hover:-translate-y-1 flex items-center justify-center gap-3 text-lg"
+                >
+                    <span className="text-2xl">👥</span> Pass & Play
+                </button>
+                <button 
+                    onClick={() => startGame(true)}
+                    className="w-full bg-gradient-to-r from-blue-500 to-indigo-600 hover:from-blue-600 hover:to-indigo-700 text-white font-bold py-5 rounded-2xl mb-4 transition-all shadow-md hover:-translate-y-1 flex items-center justify-center gap-3 text-lg"
+                >
+                    <span className="text-2xl">✨</span> Play vs AI
+                </button>
+                <button 
+                    onClick={handleCreateRoom}
+                    className="w-full bg-white border-2 border-stone-200 text-stone-600 hover:bg-stone-50 font-bold py-4 rounded-2xl transition-all hover:-translate-y-1 flex items-center justify-center gap-3"
+                >
+                    <span className="text-xl">🌐</span> Online Multiplayer
+                </button>
+            </div>
+        )}
+
+        {/* Create Room View */}
+        {onlineMenuState === 'CREATE' && (
+             <div className="bg-white p-8 rounded-3xl shadow-2xl max-w-md w-full border-4 border-white animate-bounce-in text-center">
+                 <h2 className="text-2xl font-bold text-stone-800 mb-4">Create Room</h2>
+                 <div className="bg-stone-100 p-6 rounded-2xl mb-6">
+                     <div className="text-sm text-stone-500 mb-2 uppercase tracking-wide">Room Code</div>
+                     <div className="text-5xl font-black text-indigo-500 tracking-widest">{roomCode}</div>
+                 </div>
+                 <div className="flex items-center justify-center gap-2 mb-8 text-stone-400 animate-pulse">
+                     <span className="w-2 h-2 bg-stone-400 rounded-full"></span>
+                     <span className="w-2 h-2 bg-stone-400 rounded-full"></span>
+                     <span className="w-2 h-2 bg-stone-400 rounded-full"></span>
+                     <span>Waiting for opponent...</span>
+                 </div>
+                 <button 
+                    onClick={() => setOnlineMenuState('NONE')}
+                    className="w-full py-3 text-stone-400 font-bold hover:text-stone-600"
+                 >
+                     Cancel
+                 </button>
+             </div>
+        )}
+
+        {/* Join Room View */}
+        {onlineMenuState === 'JOIN' && (
+             <div className="bg-white p-8 rounded-3xl shadow-2xl max-w-md w-full border-4 border-white animate-bounce-in text-center">
+                 <h2 className="text-2xl font-bold text-stone-800 mb-6">Join Room</h2>
+                 <input 
+                    type="text"
+                    value={joinCodeInput}
+                    onChange={(e) => setJoinCodeInput(e.target.value.toUpperCase())}
+                    placeholder="Enter 4-Digit Code"
+                    maxLength={4}
+                    className="w-full bg-stone-100 text-center text-3xl font-black text-indigo-600 p-4 rounded-xl mb-6 outline-none border-2 border-transparent focus:border-indigo-400 transition-all placeholder:text-stone-300"
+                 />
+                 <button 
+                    onClick={() => startGame(false)} // Simulating join success by starting local game
+                    disabled={joinCodeInput.length !== 4}
+                    className="w-full bg-indigo-500 hover:bg-indigo-600 disabled:bg-stone-200 disabled:text-stone-400 text-white font-bold py-4 rounded-2xl mb-4 transition-all"
+                 >
+                     Join Game
+                 </button>
+                 <button 
+                    onClick={() => setOnlineMenuState('NONE')}
+                    className="w-full py-2 text-stone-400 font-bold hover:text-stone-600"
+                 >
+                     Back
+                 </button>
+             </div>
+        )}
         
         <button onClick={() => setShowRules(true)} className="mt-8 text-stone-400 font-bold hover:text-stone-600 hover:underline">
             How to Play?
@@ -253,6 +331,7 @@ const App: React.FC = () => {
     );
   }
 
+  // --- RENDER GAME BOARD ---
   return (
     <div className="min-h-screen bg-stone-50 pb-[340px] flex flex-col md:flex-row">
       {/* Mobile Header */}
