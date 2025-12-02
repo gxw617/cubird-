@@ -94,8 +94,9 @@ export const PlayerArea: React.FC<PlayerAreaProps> = ({
         </div>
 
         {/* Hand - Horizontal Scroll Enabled */}
-        <div className="flex-1 w-full overflow-x-auto scrollbar-thin flex justify-start md:justify-center pb-4 pt-6 px-4">
-            <div className="flex items-end space-x-2 min-w-min mx-auto">
+        <div className="flex-1 w-full overflow-x-auto scrollbar-thin flex justify-start pb-4 pt-6 px-4">
+            {/* Added mx-auto here to center content if it fits, but justify-start on parent prevents left clipping if it overflows */}
+            <div className="flex items-end min-w-min mx-auto">
             {isHidden ? (
                 // Hidden Hand (Opponent)
                  player.hand.map((_, i) => (
@@ -118,16 +119,21 @@ export const PlayerArea: React.FC<PlayerAreaProps> = ({
                     const isDisabled = !isCurrentTurn;
 
                     return (
-                        <div key={type} className={`relative group mx-2 md:mx-3 transition-transform flex-shrink-0 ${!isDisabled ? 'hover:-translate-y-2' : 'opacity-80 grayscale-[0.3]'}`}>
+                        <div key={type} className={`
+                            relative group mx-3 md:mx-6 transition-all flex-shrink-0 
+                            ${isFlocking ? 'z-[100]' : ''} 
+                            ${!isDisabled && !isFlocking ? 'hover:-translate-y-2 hover:z-[90]' : ''}
+                            ${isDisabled ? 'opacity-80 grayscale-[0.3]' : ''}
+                        `}>
                             
                             {/* Visual Stack Layers */}
                             {stackDepth >= 1 && (
-                                <div className={`absolute top-0 left-0 w-full h-full transform -rotate-6 -translate-x-3 translate-y-1 z-0 ${isFlocking ? 'animate-fly-up delay-75' : ''}`}>
+                                <div className={`absolute top-0 left-0 w-full h-full transform -rotate-6 -translate-x-1.5 translate-y-1 z-0 ${isFlocking ? 'animate-fly-up delay-75' : ''}`}>
                                     <Card type={type} isStackPlaceholder />
                                 </div>
                             )}
                             {stackDepth >= 2 && (
-                                <div className={`absolute top-0 left-0 w-full h-full transform -rotate-3 -translate-x-1.5 translate-y-0.5 z-10 ${isFlocking ? 'animate-fly-up delay-100' : ''}`}>
+                                <div className={`absolute top-0 left-0 w-full h-full transform -rotate-3 -translate-x-0.5 translate-y-0.5 z-10 ${isFlocking ? 'animate-fly-up delay-100' : ''}`}>
                                     <Card type={type} isStackPlaceholder />
                                 </div>
                             )}
@@ -138,7 +144,7 @@ export const PlayerArea: React.FC<PlayerAreaProps> = ({
                                     absolute -top-4 -right-3 
                                     text-xs font-black w-7 h-7 
                                     rounded-full flex items-center justify-center 
-                                    z-30 border-[3px] shadow-sm transition-colors 
+                                    z-[50] border-[3px] shadow-sm transition-colors 
                                     ${isSelected ? 'bg-yellow-400 text-yellow-900 border-white' : 'bg-stone-800 text-white border-white'}
                                 `}>
                                     {count}
@@ -147,11 +153,11 @@ export const PlayerArea: React.FC<PlayerAreaProps> = ({
                             
                             {/* Flock Indicator Dot */}
                             {isFlockPhase && canThisBirdFlock && !isSelected && !isDisabled && (
-                                <div className="absolute -bottom-2 left-1/2 -translate-x-1/2 w-2 h-2 bg-emerald-500 rounded-full animate-ping z-40"></div>
+                                <div className="absolute -bottom-2 left-1/2 -translate-x-1/2 w-2 h-2 bg-emerald-500 rounded-full animate-ping z-[60]"></div>
                             )}
 
                             {/* Main Card */}
-                            <div className="relative z-20">
+                            <div className="relative z-30">
                                 <Card 
                                     type={type} 
                                     selected={isSelected} 
@@ -186,7 +192,6 @@ export const PlayerArea: React.FC<PlayerAreaProps> = ({
                      <button 
                         onClick={onFlock}
                         // Enabled if we have a valid selection OR if we want to show the button as "hint" (though clicking needs logic)
-                        // Actually, we disable click if !canCurrentSelectionFlock, but we animate if hasAnyFlockable
                         disabled={!canCurrentSelectionFlock || isHidden}
                         className={`
                             w-full px-6 py-3 rounded-xl font-bold shadow-sm transition-all flex items-center justify-center relative overflow-hidden

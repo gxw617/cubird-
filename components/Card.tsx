@@ -1,3 +1,4 @@
+
 import React from 'react';
 import { BirdType } from '../types';
 import { BIRD_DATA } from '../constants';
@@ -63,7 +64,7 @@ export const Card: React.FC<CardProps> = ({
   
   // Animations
   const animClass = !mini && !isGhost && !isStackPlaceholder && !isFlying ? 'animate-[bounceIn_0.4s_ease-out]' : '';
-  const flyClass = isFlying ? 'animate-fly-up z-50 pointer-events-none' : '';
+  const flyClass = isFlying ? 'animate-fly-up z-[100] pointer-events-none' : '';
   
   // State styles
   const stateClasses = isGhost 
@@ -103,7 +104,7 @@ export const Card: React.FC<CardProps> = ({
   if (mini) {
     return (
       <div className={`${baseClasses} ${selectedClasses} justify-center`} onClick={onClick}>
-        <span className="text-3xl leading-none filter drop-shadow-sm select-none transform transition-transform hover:scale-110">
+        <span className="text-3xl leading-none filter drop-shadow-[0_2px_0_rgba(0,0,0,0.15)] select-none transform transition-transform hover:scale-110">
             {bird.emoji}
         </span>
       </div>
@@ -147,7 +148,8 @@ export const Card: React.FC<CardProps> = ({
 
         {/* Center: Emoji */}
         <div className="flex-1 flex items-center justify-center w-full pt-4 pb-6">
-          <span className="text-6xl filter drop-shadow-sm transform group-hover:scale-110 group-active:scale-95 transition-transform duration-300 select-none">
+          {/* Enhanced 3D Drop Shadow */}
+          <span className="text-6xl filter drop-shadow-[0_4px_1px_rgba(0,0,0,0.3)] transform group-hover:scale-110 group-active:scale-95 transition-transform duration-300 select-none">
               {bird.emoji}
           </span>
           
