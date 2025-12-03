@@ -43,19 +43,88 @@ const App: React.FC = () => {
     initGemini();
   }, []);
 
+  // --- HELPER: Fix Firebase Empty Arrays/Objects ---
+  const sanitizeGameState = useCallback((state: any): GameState => {
+      if (!state) return state;
+      
+      // Helper to ensure something is an array
+      const asArray = (val: any) => {
+          if (!val) return [];
+          if (Array.isArray(val)) return val;
+          // Firebase might return {0: 'a', 1: 'b'} for arrays. Convert to values.
+          return Object.values(val);
+      };
+
+      // 1. Top Level Arrays
+      state.deck = asArray(state.deck);
+      state.discardPile = asArray(state.discardPile);
+      state.lastActionLog = asArray(state.lastActionLog);
+      
+      // 2. Rows (Must be array of arrays)
+      let rawRows = state.rows;
+      if (!rawRows) {
+          state.rows = [[],[],[],[]];
+      } else {
+          // If rows is object {0: [...], 1: [...]}, convert to array
+          if (!Array.isArray(rawRows)) {
+              // We need to preserve index order if it's an object, though usually Object.values is fine 
+              // but to be safe for sparse arrays in rows:
+              const newRows = [[],[],[],[]];
+              Object.keys(rawRows).forEach((k: any) => {
+                  newRows[k] = asArray(rawRows[k]);
+              });
+              state.rows = newRows;
+          } else {
+              // It is an array, but elements might be null or objects
+              state.rows = rawRows.map((r: any) => asArray(r));
+          }
+      }
+
+      // 3. Players
+      let rawPlayers = state.players;
+      if (!rawPlayers) {
+          state.players = []; 
+      } else {
+          // If players is object {0: {...}, 1: {...}}
+          if (!Array.isArray(rawPlayers)) {
+              rawPlayers = Object.values(rawPlayers);
+          }
+          state.players = rawPlayers.map((p: any) => {
+              if (!p) return { id: 0, name: 'Unknown', isAi: false, hand: [], collection: {} };
+              // Ensure hand is array
+              p.hand = asArray(p.hand);
+              // Ensure collection is object
+              if (!p.collection) p.collection = {};
+              return p;
+          });
+      }
+      
+      return state as GameState;
+  }, []);
+
   // --- ONLINE SYNC EFFECT ---
   useEffect(() => {
       if (isOnlineGame && roomCode) {
-          const unsubscribe = subscribeToRoom(roomCode, (newState) => {
+          const unsubscribe = subscribeToRoom(roomCode, (rawState) => {
+              const newState = sanitizeGameState(rawState);
               setGameState(newState);
-              // Simple "Game Start" detection for joiner
-              if (newState.players.length > 0 && newState.lastActionLog[newState.lastActionLog.length-1]?.includes("joined")) {
+              
+              // HOST LOGIC: Detect if opponent has joined
+              if (myPlayerId === 0 && newState.players.length > 1 && newState.players[1].name !== "Waiting...") {
+                  if (onlineMenuState === 'CREATE') {
+                      setOnlineMenuState('NONE'); 
+                      playSound('success');
+                  }
+              }
+
+              // JOINER LOGIC: Simple check
+              if (myPlayerId === 1 && onlineStatus !== "Connected!") {
                   setOnlineStatus("Connected!");
               }
           });
           return () => unsubscribe();
       }
-  }, [isOnlineGame, roomCode]);
+  }, [isOnlineGame, roomCode, myPlayerId, onlineStatus, onlineMenuState, sanitizeGameState]);
 
 
   const startGame = (ai: boolean) => {
@@ -80,17 +149,18 @@ const App: React.FC = () => {
       setOnlineStatus('Creating Room...');
 
       const newState = initializeGame(['Host (You)', 'Opponent (Waiting)'], false);
-      // Hack: Set opponent name to indicate waiting
       newState.players[1].name = "Waiting...";
+      
+      setGameState(newState); 
       
       const success = await createRoom(code, newState);
       if (success) {
           setIsOnlineGame(true);
           setMyPlayerId(0);
-          setGameState(newState);
           setOnlineStatus('Waiting for opponent...');
       } else {
-          setOnlineStatus('Error creating room. Check config.');
+          setOnlineStatus('Error: Check Internet/Config');
+          setGameState(null); 
       }
   };
 
@@ -101,10 +171,15 @@ const App: React.FC = () => {
       
       const result = await joinRoom(joinCodeInput);
       if (result.success && result.gameState) {
-          const newState = result.gameState;
+          const newState = sanitizeGameState(result.gameState);
+          
           // Update player 2 name
-          newState.players[1].name = "Joiner (You)";
-          newState.players[0].name = "Host";
+          if (newState.players[1]) {
+             newState.players[1].name = "Joiner (You)";
+          }
+          if (newState.players[0]) {
+             newState.players[0].name = "Host";
+          }
           newState.lastActionLog.push("Opponent joined the game!");
           
           await updateGameState(joinCodeInput, newState);
@@ -139,6 +214,7 @@ const App: React.FC = () => {
     setShowQuitConfirm(false);
     setViewBoardMode(false);
     setIsOnlineGame(false);
+    setOnlineMenuState('NONE');
     setRoomCode('');
   };
 
@@ -343,11 +419,8 @@ const App: React.FC = () => {
     }, 600); 
   };
 
-  // --- RENDER START SCREEN / LOBBY ---
-  if (!gameState || (isOnlineGame && gameState.players[1].name === "Waiting..." && myPlayerId === 0)) {
-    // If we are Host and waiting for opponent, show waiting screen inside standard game view or special view?
-    // Let's handle special "Lobby Waiting" state here
-    
+  // --- RENDER LOGIC ---
+  if (!gameState || onlineMenuState !== 'NONE') {
     return (
       <div className="min-h-screen flex flex-col items-center justify-center bg-stone-100 p-4 font-sans text-stone-800">
         <h1 className="text-8xl font-black text-transparent bg-clip-text bg-gradient-to-br from-teal-500 to-indigo-600 mb-2 drop-shadow-sm tracking-tighter">
@@ -398,9 +471,9 @@ const App: React.FC = () => {
                      <span className="w-2 h-2 bg-stone-400 rounded-full"></span>
                      <span>Waiting for opponent to join...</span>
                  </div>
-                 {onlineStatus && <p className="text-red-400 text-xs mb-4">{onlineStatus}</p>}
+                 {onlineStatus && <p className="text-indigo-500 text-xs mb-4 font-bold">{onlineStatus}</p>}
                  <button 
-                    onClick={() => { setOnlineMenuState('NONE'); setIsOnlineGame(false); setRoomCode(''); }}
+                    onClick={() => { setOnlineMenuState('NONE'); setIsOnlineGame(false); setRoomCode(''); setGameState(null); }}
                     className="w-full py-3 text-stone-400 font-bold hover:text-stone-600"
                  >
                      Cancel
