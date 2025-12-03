@@ -58,8 +58,8 @@ const App: React.FC = () => {
       // We must force a dense array of 4 arrays
       const denseRows: BirdType[][] = [[], [], [], []];
       if (state.rows) {
-          // Whether it is an array or object, we iterate 0-3 to guarantee structure
           const source = state.rows;
+          // Whether source is Array or Object, iterating 0..3 works for both accessing by key/index
           for(let i=0; i<4; i++) {
               if (source[i]) {
                   denseRows[i] = asArray(source[i]);
@@ -68,21 +68,32 @@ const App: React.FC = () => {
       }
       state.rows = denseRows;
 
-      // 3. Players
-      let rawPlayers = state.players;
-      if (!rawPlayers) {
-          state.players = []; 
-      } else {
-          if (!Array.isArray(rawPlayers)) {
-              rawPlayers = Object.values(rawPlayers);
+      // 3. Players: CRITICAL FIX for "undefined reading name"
+      // We explicitly rebuild the players array to ensure indices 0 and 1 exist.
+      const densePlayers: any[] = [];
+      const rawPlayers = state.players || [];
+      
+      for (let i = 0; i < 2; i++) {
+          let p = rawPlayers[i];
+          
+          // If player data is missing, create a safe placeholder
+          if (!p) {
+              p = { 
+                  id: i, 
+                  name: i === 0 ? 'Player 1' : 'Player 2', 
+                  isAi: false, 
+                  hand: [], 
+                  collection: {} 
+              };
           }
-          state.players = rawPlayers.map((p: any) => {
-              if (!p) return { id: 0, name: 'Unknown', isAi: false, hand: [], collection: {} };
-              p.hand = asArray(p.hand);
-              if (!p.collection) p.collection = {};
-              return p;
-          });
+
+          // Ensure internal arrays exist
+          p.hand = asArray(p.hand);
+          if (!p.collection) p.collection = {};
+          
+          densePlayers[i] = p;
       }
+      state.players = densePlayers;
       
       return state as GameState;
   }, []);
