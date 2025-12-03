@@ -464,7 +464,7 @@ const App: React.FC = () => {
         <div className="fixed inset-0 z-[80] flex items-center justify-center bg-stone-900/80 backdrop-blur-md">
             <div className="bg-white p-10 rounded-3xl shadow-2xl text-center animate-bounce-in max-w-sm mx-4 border-4 border-white">
                 <div className="text-7xl mb-6 filter drop-shadow-md">🏆</div>
-                <h2 className="text-4xl font-black text-stone-800 mb-2">{gameState.players[gameState.winner].name} Wins!</h2>
+                <h2 className="text-4xl font-black text-stone-800 mb-2">{gameState.players[gameState.winner] ? gameState.players[gameState.winner].name : 'Winner'} Wins!</h2>
                 <div className="flex flex-col gap-3 mt-6"><button onClick={() => setViewBoardMode(true)} className="w-full bg-stone-100 text-stone-600 px-8 py-4 rounded-xl font-bold shadow-sm hover:bg-stone-200 transition-all">View Board</button><button onClick={() => setGameState(null)} className="w-full bg-stone-800 text-white px-8 py-4 rounded-xl font-bold shadow-lg hover:bg-stone-900 transition-all hover:scale-105">Back to Menu</button></div>
             </div>
         </div>
