@@ -157,6 +157,13 @@ export const applyMove = (state: GameState, move: GameMove): MoveOutcome => {
       isValid: false
   };
 
+  // --- SAFETY CHECK ---
+  // If player data is missing (e.g. sync issue), abort to prevent crash
+  if (!player) {
+      console.warn("applyMove called but current player is missing");
+      return outcome;
+  }
+
   // --- PASS TURN ---
   if (move.type === MoveType.PASS) {
       if (newState.turnPhase !== TurnPhase.FLOCK_OR_PASS) return outcome;

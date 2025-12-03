@@ -89,7 +89,7 @@ const App: React.FC = () => {
 
           // Ensure internal arrays exist
           p.hand = asArray(p.hand);
-          if (!p.collection) p.collection = {};
+          if (!p.collection || typeof p.collection !== 'object') p.collection = {};
           
           densePlayers[i] = p;
       }
