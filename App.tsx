@@ -48,14 +48,18 @@ const App: React.FC = () => {
           return Object.values(val);
       };
 
-      // 1. Top Level Arrays
+      // 1. Restore Winner State (CRITICAL FIX for "Winner Wins!" bug)
+      // Firebase drops keys with null values. If winner is undefined, it means null (no winner yet).
+      if (state.winner === undefined) {
+          state.winner = null;
+      }
+
+      // 2. Top Level Arrays
       state.deck = asArray(state.deck);
       state.discardPile = asArray(state.discardPile);
       state.lastActionLog = asArray(state.lastActionLog);
       
-      // 2. Rows: CRITICAL FIX for Sparse Arrays
-      // Firebase might return {0: [...], 2: [...]} (Row 1 is empty/undefined)
-      // We must force a dense array of 4 arrays
+      // 3. Rows: CRITICAL FIX for Sparse Arrays
       const denseRows: BirdType[][] = [[], [], [], []];
       if (state.rows) {
           const source = state.rows;
@@ -68,7 +72,7 @@ const App: React.FC = () => {
       }
       state.rows = denseRows;
 
-      // 3. Players: CRITICAL FIX for "undefined reading name"
+      // 4. Players: CRITICAL FIX for "undefined reading name"
       // We explicitly rebuild the players array to ensure indices 0 and 1 exist.
       const densePlayers: any[] = [];
       const rawPlayers = state.players || [];
