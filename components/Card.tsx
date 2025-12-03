@@ -31,6 +31,16 @@ export const Card: React.FC<CardProps> = ({
   onDragStart 
 }) => {
   const bird = BIRD_DATA[type];
+
+  // --- SAFETY CHECK ---
+  // If bird data is missing (invalid type or sync issue), return a placeholder to prevent crash
+  if (!bird && !isFaceDown) {
+      return (
+        <div className="w-14 h-20 bg-stone-200 rounded border-2 border-stone-300 flex items-center justify-center text-stone-400 font-bold select-none">
+            ?
+        </div>
+      );
+  }
   
   // Consistent Palette Logic mapped to constants
   const getPalette = (bgClass: string) => {
@@ -56,7 +66,7 @@ export const Card: React.FC<CardProps> = ({
     }
   };
 
-  const palette = getPalette(bird.color);
+  const palette = bird ? getPalette(bird.color) : { base: 'bg-gray-200', border: 'border-gray-400', text: 'text-gray-800' };
 
   // Interaction classes
   const cursorClass = onClick ? 'cursor-pointer' : 'cursor-default';
@@ -101,7 +111,7 @@ export const Card: React.FC<CardProps> = ({
   }
 
   // --- Mini Card Render (Collection Token) ---
-  if (mini) {
+  if (mini && bird) {
     return (
       <div className={`${baseClasses} ${selectedClasses} justify-center`} onClick={onClick}>
         <span className="text-3xl leading-none filter drop-shadow-[0_2px_0_rgba(0,0,0,0.15)] select-none transform transition-transform hover:scale-110">
@@ -136,7 +146,7 @@ export const Card: React.FC<CardProps> = ({
         onClick={onClick}
       >
         {/* Flock Badge (Printed Effect) */}
-        {!isGhost && !isFlying && (
+        {!isGhost && !isFlying && bird && (
             <div className={`
                 absolute top-2 right-3
                 text-[13px] font-black tracking-tighter
@@ -150,7 +160,7 @@ export const Card: React.FC<CardProps> = ({
         <div className="flex-1 flex items-center justify-center w-full pt-4 pb-6">
           {/* Enhanced 3D Drop Shadow */}
           <span className="text-6xl filter drop-shadow-[0_4px_1px_rgba(0,0,0,0.3)] transform group-hover:scale-110 group-active:scale-95 transition-transform duration-300 select-none">
-              {bird.emoji}
+              {bird ? bird.emoji : '?'}
           </span>
           
           {isDimmed && (
@@ -163,7 +173,7 @@ export const Card: React.FC<CardProps> = ({
         </div>
 
         {/* Name (Printed Effect) */}
-        {!isGhost && !isFlying && (
+        {!isGhost && !isFlying && bird && (
             <div className={`
                 absolute bottom-3 w-full text-center
                 text-[11px] font-black uppercase tracking-widest
