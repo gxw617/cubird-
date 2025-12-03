@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { GameState, MoveType, BirdType, GameMove, MoveOutcome, TurnPhase } from './types';
 import { initializeGame, applyMove } from './services/gameLogic';

@@ -1,4 +1,3 @@
-
 import React from 'react';
 import { BirdType } from '../types';
 import { BIRD_DATA } from '../constants';
