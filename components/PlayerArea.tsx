@@ -61,12 +61,12 @@ export const PlayerArea: React.FC<PlayerAreaProps> = ({
           {!isHidden && <div className="text-[10px] md:text-xs text-stone-400 font-medium">{player.hand.length} cards</div>}
         </div>
 
-        {/* Hand - Allow Scrolling ALWAYS */}
-        <div className={`flex-1 w-full overflow-x-auto scrollbar-thin flex justify-start py-2 px-4 ${!isCurrentTurn ? 'opacity-80' : ''}`}>
+        {/* Hand - Allow Scrolling ALWAYS, added padding-top to fix badge clipping */}
+        <div className={`flex-1 w-full overflow-x-auto scrollbar-thin flex justify-start pt-6 pb-2 px-4 ${!isCurrentTurn ? 'opacity-80' : ''}`}>
             <div className="flex items-end min-w-min mx-auto md:pb-2">
             {isHidden ? (
                  player.hand.map((_, i) => (
-                    <div key={i} className="-ml-6 md:-ml-8 first:ml-0 scale-75 md:scale-100 origin-bottom"><Card type={BirdType.PARROT} isFaceDown mini /></div>
+                    <div key={i} className="-ml-8 md:-ml-10 first:ml-0 scale-75 md:scale-100 origin-bottom"><Card type={BirdType.PARROT} isFaceDown mini /></div>
                  ))
             ) : (
                 Object.keys(groupedHand).sort().map((key) => {
@@ -80,7 +80,7 @@ export const PlayerArea: React.FC<PlayerAreaProps> = ({
 
                     return (
                         <div key={type} className={`
-                            relative group mx-1.5 md:mx-4 transition-all flex-shrink-0 
+                            relative group mx-2 md:mx-4 transition-all flex-shrink-0 
                             ${isFlocking ? 'z-[100]' : ''} 
                             ${!isDisabled && !isFlocking ? 'hover:-translate-y-2 hover:z-[90]' : ''}
                             ${isDisabled ? 'cursor-default' : 'cursor-pointer'}
@@ -89,7 +89,7 @@ export const PlayerArea: React.FC<PlayerAreaProps> = ({
                             {stackDepth >= 1 && <div className={`absolute top-0 left-0 w-full h-full transform -rotate-6 -translate-x-1.5 translate-y-1 z-0 ${isFlocking ? 'animate-fly-up delay-75' : ''}`}><Card type={type} isStackPlaceholder /></div>}
                             {stackDepth >= 2 && <div className={`absolute top-0 left-0 w-full h-full transform -rotate-3 -translate-x-0.5 translate-y-0.5 z-10 ${isFlocking ? 'animate-fly-up delay-100' : ''}`}><Card type={type} isStackPlaceholder /></div>}
                             {!isFlocking && (
-                                <div className={`absolute -top-3 -right-2 md:-top-4 md:-right-3 text-[10px] md:text-xs font-black w-6 h-6 md:w-7 md:h-7 rounded-full flex items-center justify-center z-[50] border-[2px] md:border-[3px] shadow-sm transition-colors ${isSelected ? 'bg-yellow-400 text-yellow-900 border-white' : 'bg-stone-800 text-white border-white'}`}>{count}</div>
+                                <div className={`absolute -top-4 -right-2 md:-top-4 md:-right-3 text-[10px] md:text-xs font-black w-6 h-6 md:w-7 md:h-7 rounded-full flex items-center justify-center z-[50] border-[2px] md:border-[3px] shadow-sm transition-colors ${isSelected ? 'bg-yellow-400 text-yellow-900 border-white' : 'bg-stone-800 text-white border-white'}`}>{count}</div>
                             )}
                             {isFlockPhase && canThisBirdFlock && !isSelected && !isDisabled && <div className="absolute -bottom-2 left-1/2 -translate-x-1/2 w-2 h-2 bg-emerald-500 rounded-full animate-ping z-[60]"></div>}
                             <div className={`relative z-30 ${isDisabled ? 'pointer-events-none grayscale-[0.3]' : ''}`}>

@@ -17,9 +17,6 @@ const App: React.FC = () => {
   const [showGuideMobile, setShowGuideMobile] = useState(false);
   const [showQuitConfirm, setShowQuitConfirm] = useState(false);
   
-  // Online / Lobby State
-  // NONE -> [NAMING_HOST] -> CREATE
-  // NONE -> [NAMING_JOIN] -> JOIN
   const [onlineMenuState, setOnlineMenuState] = useState<'NONE' | 'NAMING_HOST' | 'CREATE' | 'NAMING_JOIN' | 'JOIN'>('NONE');
   const [roomCode, setRoomCode] = useState<string>('');
   const [joinCodeInput, setJoinCodeInput] = useState<string>('');
@@ -228,6 +225,7 @@ const App: React.FC = () => {
                             return p.hand.filter(b => b === type).length >= BIRD_DATA[type].smallFlock;
                         });
                     const outcome = applyMove(prev, { type: MoveType.FLOCK, birdType: flockable as BirdType });
+                    playSound('flap');
                     playSound('success');
                     return outcome.newState;
                 } else {
@@ -258,10 +256,8 @@ const App: React.FC = () => {
         : (!gameState.players[gameState.currentPlayerIndex].isAi)) 
     : false;
 
-  // --- TIMER LOGIC ---
   useEffect(() => {
     if (timerRef.current) clearInterval(timerRef.current);
-    
     if (isHumanTurn && gameState?.turnPhase === TurnPhase.FLOCK_OR_PASS && humanPlayer) {
         const flockableCount = getFlockableCount(humanPlayer);
         let duration = 5;
@@ -293,7 +289,10 @@ const App: React.FC = () => {
     const move: GameMove = { type: MoveType.PLAY, birdType: selectedBird, rowIndex, side };
     const outcome = applyMove(gameState, move);
 
-    if (outcome.captured.length > 0) playSound('capture');
+    if (outcome.captured.length > 0) {
+        playSound('whoosh');
+        playSound('capture');
+    }
     else if (outcome.drawn > 0) playSound('pop');
     else playSound('pop');
 
@@ -319,14 +318,17 @@ const App: React.FC = () => {
     if (isOnlineGame && gameState.currentPlayerIndex !== myPlayerId) return;
 
     setFlockingBird(selectedBird);
-    playSound('success');
+    playSound('flap'); 
     setTimeout(() => {
+        playSound('success');
         const outcome = applyMove(gameState, { type: MoveType.FLOCK, birdType: selectedBird });
         syncMove(outcome.newState);
         setSelectedBird(null);
         setFlockingBird(null);
     }, 600); 
   };
+
+  const showDrawModal = isHumanTurn && gameState?.turnPhase === TurnPhase.DRAW_DECISION;
 
   if (!gameState || onlineMenuState !== 'NONE') {
     return (
@@ -336,28 +338,12 @@ const App: React.FC = () => {
 
         {onlineMenuState === 'NONE' && (
             <div className="bg-white p-8 rounded-3xl shadow-2xl max-w-md w-full border-4 border-white ring-1 ring-stone-200 animate-bounce-in flex flex-col gap-3">
-                {/* Pass & Play */}
-                <button onClick={() => startGame(false)} className="w-full bg-stone-600 hover:bg-stone-700 text-white font-bold py-4 px-6 rounded-2xl transition-all shadow-md hover:-translate-y-1 flex items-center">
-                    <span className="text-2xl w-12 text-center drop-shadow-md">👥</span>
-                    <span className="flex-1 text-center text-lg">Pass & Play</span>
-                </button>
-                
-                {/* Play vs AI */}
-                <button onClick={() => startGame(true)} className="w-full bg-amber-500 hover:bg-amber-600 text-white font-bold py-4 px-6 rounded-2xl transition-all shadow-md hover:-translate-y-1 flex items-center">
-                    <span className="text-2xl w-12 text-center drop-shadow-md">✨</span>
-                    <span className="flex-1 text-center text-lg">Play vs AI</span>
-                </button>
-                
-                {/* Create Online - Emerald */}
-                <button onClick={handleCreateMenu} className="w-full bg-emerald-500 hover:bg-emerald-600 text-white font-bold py-4 px-6 rounded-2xl transition-all shadow-md hover:-translate-y-1 flex items-center">
-                    <span className="text-xl w-12 text-center drop-shadow-md">🌐</span>
-                    <span className="flex-1 text-center text-lg">Create Online Room</span>
-                </button>
-                
+                <button onClick={() => startGame(false)} className="w-full bg-stone-600 hover:bg-stone-700 text-white font-bold py-4 px-6 rounded-2xl transition-all shadow-md hover:-translate-y-1 flex items-center"><span className="text-2xl w-12 text-center drop-shadow-md">👥</span><span className="flex-1 text-center text-lg">Pass & Play</span></button>
+                <button onClick={() => startGame(true)} className="w-full bg-amber-500 hover:bg-amber-600 text-white font-bold py-4 px-6 rounded-2xl transition-all shadow-md hover:-translate-y-1 flex items-center"><span className="text-2xl w-12 text-center drop-shadow-md">✨</span><span className="flex-1 text-center text-lg">Play vs AI</span></button>
+                <button onClick={handleCreateMenu} className="w-full bg-emerald-500 hover:bg-emerald-600 text-white font-bold py-4 px-6 rounded-2xl transition-all shadow-md hover:-translate-y-1 flex items-center"><span className="text-xl w-12 text-center drop-shadow-md">🌐</span><span className="flex-1 text-center text-lg">Create Online Room</span></button>
                 <button onClick={handleJoinMenu} className="w-full mt-2 text-stone-400 font-bold hover:text-stone-600 hover:underline text-sm">Join Existing Room</button>
             </div>
         )}
-
         {(onlineMenuState === 'NAMING_HOST') && (
              <div className="bg-white p-8 rounded-3xl shadow-2xl max-w-md w-full border-4 border-white animate-bounce-in text-center">
                  <h2 className="text-2xl font-bold text-stone-800 mb-6">Enter Your Name</h2>
@@ -366,7 +352,6 @@ const App: React.FC = () => {
                  <button onClick={() => setOnlineMenuState('NONE')} className="w-full py-2 text-stone-400 font-bold hover:text-stone-600">Back</button>
              </div>
         )}
-
         {(onlineMenuState === 'NAMING_JOIN') && (
              <div className="bg-white p-8 rounded-3xl shadow-2xl max-w-md w-full border-4 border-white animate-bounce-in text-center">
                  <h2 className="text-2xl font-bold text-stone-800 mb-6">Enter Your Name</h2>
@@ -375,7 +360,6 @@ const App: React.FC = () => {
                  <button onClick={() => setOnlineMenuState('NONE')} className="w-full py-2 text-stone-400 font-bold hover:text-stone-600">Back</button>
              </div>
         )}
-
         {onlineMenuState === 'JOIN' && (
              <div className="bg-white p-8 rounded-3xl shadow-2xl max-w-md w-full border-4 border-white animate-bounce-in text-center">
                  <h2 className="text-2xl font-bold text-stone-800 mb-6">Join Room</h2>
@@ -386,7 +370,6 @@ const App: React.FC = () => {
                  <button onClick={() => { setOnlineMenuState('NAMING_JOIN'); setOnlineStatus(''); }} className="w-full py-2 text-stone-400 font-bold hover:text-stone-600">Back</button>
              </div>
         )}
-        
         {onlineMenuState === 'CREATE' && (
              <div className="bg-white p-8 rounded-3xl shadow-2xl max-w-md w-full border-4 border-white animate-bounce-in text-center">
                  <h2 className="text-2xl font-bold text-stone-800 mb-4">Room Created</h2>
@@ -405,8 +388,6 @@ const App: React.FC = () => {
     );
   }
 
-  const showDrawModal = isHumanTurn && gameState?.turnPhase === TurnPhase.DRAW_DECISION;
-
   return (
     <div className="min-h-screen bg-stone-50 pb-[300px] flex flex-col md:flex-row">
       <header className="md:hidden bg-white/90 backdrop-blur-md shadow-sm sticky top-0 z-40 px-4 py-3 flex justify-between items-center border-b border-stone-200">
@@ -418,7 +399,22 @@ const App: React.FC = () => {
              <div className="flex items-center gap-4"><button onClick={() => setShowQuitConfirm(true)} className="text-stone-400 hover:text-red-500 font-bold px-4 py-2 rounded-xl bg-white border border-stone-200 hover:bg-red-50 hover:border-red-200 transition-colors">← Quit Game</button><div className="font-black text-3xl text-stone-300 tracking-tighter">CUBIRDS</div></div>
              {isOnlineGame && (<div className="flex items-center gap-2 bg-amber-50 px-4 py-2 rounded-full border border-amber-100"><span className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></span><span className="text-amber-600 font-bold text-sm">Room: {roomCode}</span></div>)}
              {gameState.isAiThinking && (<div className="flex items-center gap-2 text-indigo-500 font-bold animate-pulse bg-indigo-50 px-4 py-2 rounded-full">✨ Gemini is thinking...</div>)}
-             <div className="text-sm font-medium text-stone-400 bg-white px-3 py-1 rounded-full border border-stone-200 shadow-sm">Deck: {gameState.deck.length} | Round: {Math.ceil(gameState.lastActionLog.filter(l => l.includes('Round')).length)}</div>
+             
+             {/* Deck and Discard Pile */}
+             <div className="flex items-center gap-3">
+                 <div className="flex flex-col items-center">
+                     <div className="w-10 h-14 bg-stone-700 rounded border-2 border-white shadow-md relative flex items-center justify-center animate-slide-in-top">
+                         <span className="text-white font-bold text-xs">{gameState.deck.length}</span>
+                     </div>
+                     <span className="text-[10px] text-stone-400 font-bold mt-1">Deck</span>
+                 </div>
+                 <div className="flex flex-col items-center">
+                     <div className="w-10 h-14 bg-stone-300 rounded border-2 border-stone-400 shadow-inner flex items-center justify-center">
+                         <span className="text-stone-500 font-bold text-xs">{gameState.discardPile.length}</span>
+                     </div>
+                     <span className="text-[10px] text-stone-400 font-bold mt-1">Discard</span>
+                 </div>
+             </div>
         </div>
         <Collection players={gameState.players} currentPlayerId={gameState.currentPlayerIndex} />
         {!showDrawModal && (<div className="w-full max-w-4xl text-center mb-1 md:mb-4 h-6 md:h-8 flex items-center justify-center"><span className="inline-block bg-white border border-stone-200 text-stone-500 px-3 py-1 md:px-4 md:py-1.5 rounded-full text-[10px] md:text-xs font-medium shadow-sm transition-opacity duration-300 truncate max-w-[90%]">{gameState.lastActionLog[gameState.lastActionLog.length - 1]}</span></div>)}
@@ -460,7 +456,6 @@ const App: React.FC = () => {
       
       {viewBoardMode && (<div className="fixed top-4 right-4 z-[90]"><button onClick={() => setViewBoardMode(false)} className="bg-stone-800 text-white px-6 py-3 rounded-full font-bold shadow-xl animate-bounce">Back to Results 🏆</button></div>)}
 
-      {/* Human Player Area (Always Visible at bottom) */}
       {humanPlayer && (
         <div className="transition-all duration-300">
             <PlayerArea 

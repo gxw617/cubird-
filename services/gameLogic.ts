@@ -74,7 +74,6 @@ export const initializeGame = (playerNames: string[], aiEnabled: boolean): GameS
           const card = drawCard(initialState);
           
           if (!card) {
-              // Should not happen at start of game unless deck size is tiny
               break; 
           }
 
