@@ -18,6 +18,7 @@ export interface BirdConfig {
   bigFlock: number;
   color: string;
   emoji: string;
+  imgUrl: string;
 }
 
 export interface Player {
