@@ -1,4 +1,3 @@
-
 import { initializeApp } from "firebase/app";
 import { getDatabase, ref, set, onValue, get, child, update, remove } from "firebase/database";
 import { GameState } from "../types";
@@ -64,13 +63,15 @@ export const joinRoom = async (roomId: string): Promise<{ success: boolean; game
     }
 };
 
-export const subscribeToRoom = (roomId: string, onUpdate: (state: GameState) => void) => {
+export const subscribeToRoom = (roomId: string, onUpdate: (state: GameState | null) => void) => {
     if (!db) return () => {};
     const roomRef = ref(db, 'rooms/' + roomId + '/gameState');
     const unsubscribe = onValue(roomRef, (snapshot) => {
-        const state = snapshot.val();
-        if (state) {
-            onUpdate(state);
+        // If snapshot doesn't exist, room was deleted
+        if (snapshot.exists()) {
+            onUpdate(snapshot.val());
+        } else {
+            onUpdate(null); // Signal deletion
         }
     });
     return unsubscribe;
@@ -85,8 +86,16 @@ export const updateGameState = async (roomId: string, newState: GameState) => {
     }
 };
 
-export const cleanupRoom = async (roomId: string) => {
+export const deleteRoom = async (roomId: string) => {
     if (!db) return;
-    // Optional: Delete room when finished
-    // await remove(ref(db, 'rooms/' + roomId));
+    try {
+        await remove(ref(db, 'rooms/' + roomId));
+    } catch (e) {
+        console.error("Error deleting room:", e);
+    }
+};
+
+export const cleanupRoom = async (roomId: string) => {
+    // Alias for deleteRoom if needed, but keeping separate for clarity
+    await deleteRoom(roomId);
 };

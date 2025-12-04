@@ -4,7 +4,7 @@ import { GameState, MoveType, BirdType, GameMove, MoveOutcome, TurnPhase } from 
 import { initializeGame, applyMove, getFlockableCount } from './services/gameLogic';
 import { getAiMove, initGemini } from './services/geminiService';
 import { playSound } from './services/audioService';
-import { createRoom, joinRoom, subscribeToRoom, updateGameState } from './services/firebase'; 
+import { createRoom, joinRoom, subscribeToRoom, updateGameState, deleteRoom } from './services/firebase'; 
 import { Row } from './components/Row';
 import { PlayerArea } from './components/PlayerArea';
 import { Collection } from './components/Collection';
@@ -30,10 +30,9 @@ const App: React.FC = () => {
   const [timerDuration, setTimerDuration] = useState<number>(10);
   const timerRef = useRef<number | null>(null);
 
-  // Restore drawConfirmation modal for optional draw
-  const [drawConfirmation, setDrawConfirmation] = useState<{ outcome: MoveOutcome } | null>(null);
   const [flockingBird, setFlockingBird] = useState<BirdType | null>(null);
   const [viewBoardMode, setViewBoardMode] = useState(false);
+  const [opponentDisconnected, setOpponentDisconnected] = useState(false);
 
   useEffect(() => {
     initGemini();
@@ -71,6 +70,13 @@ const App: React.FC = () => {
   useEffect(() => {
       if (isOnlineGame && roomCode) {
           const unsubscribe = subscribeToRoom(roomCode, (rawState) => {
+              if (rawState === null) {
+                  setOpponentDisconnected(true);
+                  setGameState(null);
+                  setIsOnlineGame(false);
+                  setRoomCode('');
+                  return;
+              }
               const newState = sanitizeGameState(rawState);
               setGameState(newState);
               if (myPlayerId === 0 && newState.players.length > 1 && newState.players[1].name !== "Waiting...") {
@@ -93,11 +99,11 @@ const App: React.FC = () => {
     const newState = initializeGame(players, ai);
     setGameState(newState);
     setSelectedBird(null);
-    setDrawConfirmation(null);
     setViewBoardMode(false);
     setOnlineMenuState('NONE'); 
     setIsOnlineGame(false);
     setMyPlayerId(0);
+    setOpponentDisconnected(false);
   };
 
   const startOnlineHost = async () => {
@@ -112,6 +118,7 @@ const App: React.FC = () => {
       newState.players[1].name = "Waiting...";
       
       setGameState(newState); 
+      setOpponentDisconnected(false);
       
       const success = await createRoom(code, newState);
       if (success) {
@@ -142,6 +149,7 @@ const App: React.FC = () => {
           setGameState(newState);
           setOnlineMenuState('NONE');
           playSound('success');
+          setOpponentDisconnected(false);
       } else {
           setOnlineStatus('Room not found or error.');
           setTimeout(() => setOnlineStatus(''), 2000);
@@ -152,6 +160,9 @@ const App: React.FC = () => {
   const handleJoinMenu = () => { playSound('click'); setPlayerNameInput(''); setOnlineMenuState('NAMING_JOIN'); };
 
   const quitGame = () => {
+    if (isOnlineGame && roomCode) {
+        deleteRoom(roomCode);
+    }
     setGameState(null);
     setSelectedBird(null);
     setShowQuitConfirm(false);
@@ -203,24 +214,13 @@ const App: React.FC = () => {
                 playSound('whoosh');
                 playSound('capture');
             } else if (moveResult.drawn > 0) {
-                // In optional draw phase, AI will decide in next block
-                playSound('pop');
+                playSound('draw');
             } else {
                 playSound('pop');
             }
 
             return { ...moveResult.newState, isAiThinking: false };
         });
-    } else if (currentState.turnPhase === TurnPhase.DRAW_DECISION) {
-        // AI Logic: Always Draw
-        setTimeout(() => {
-            setGameState(prev => {
-                if(!prev) return null;
-                playSound('draw');
-                const outcome = applyMove(prev, { type: MoveType.DRAW_CARDS });
-                return outcome.newState;
-            });
-        }, 1000);
     } else if (currentState.turnPhase === TurnPhase.FLOCK_OR_PASS) {
         setTimeout(() => {
             setGameState(prev => {
@@ -254,19 +254,19 @@ const App: React.FC = () => {
   }, [gameState, executeAiTurn]);
 
   // Determine whose hand to show at the bottom
-  // ONLINE: Always my ID
-  // LOCAL AI: Player 0 (Human)
-  // LOCAL PASS & PLAY: Current Player (Hotseat) - FIXED
   let humanPlayer = null;
   if (gameState) {
       if (isOnlineGame) {
           humanPlayer = gameState.players[myPlayerId];
       } else {
+          // Local Pass & Play: Always show the active player (Hotseat)
           const current = gameState.players[gameState.currentPlayerIndex];
           if (current.isAi) {
-              humanPlayer = gameState.players[0]; // If AI turn, show Human P1
+              // If AI turn, show Human P1
+              humanPlayer = gameState.players[0];
           } else {
-              humanPlayer = current; // Human turn (P1 or P2 in Pass&Play), show active player
+              // Human turn (P1 or P2 in Pass&Play), show active player
+              humanPlayer = current;
           }
       }
   }
@@ -313,36 +313,14 @@ const App: React.FC = () => {
     if (outcome.captured.length > 0) {
         playSound('whoosh');
         playSound('capture');
-        syncMove(outcome.newState);
-        setSelectedBird(null);
-    }
-    else if (outcome.drawn > 0) {
-        // Impossible in current logic as outcome.drawn is 0 for phase change
+    } else if (outcome.drawn > 0) {
+        playSound('draw');
     } else {
-        // No Capture -> Optional Draw phase
         playSound('pop');
-        setDrawConfirmation({ outcome });
-        // Don't sync yet if we want to show local modal decision, BUT
-        // `applyMove` already changed the state to DRAW_DECISION. 
-        // We sync the row changes, but the phase will lock UI.
-        syncMove(outcome.newState);
-        setSelectedBird(null);
     }
-  };
 
-  const confirmDraw = () => {
-      if (!gameState) return;
-      playSound('draw');
-      const outcome = applyMove(gameState, { type: MoveType.DRAW_CARDS });
-      syncMove(outcome.newState);
-      setDrawConfirmation(null);
-  };
-
-  const skipDraw = () => {
-    if (!gameState) return;
-    const outcome = applyMove(gameState, { type: MoveType.SKIP_DRAW });
     syncMove(outcome.newState);
-    setDrawConfirmation(null);
+    setSelectedBird(null);
   };
 
   const handleFlock = () => {
@@ -360,11 +338,7 @@ const App: React.FC = () => {
     }, 600); 
   };
 
-  // Show modal if phase is DRAW_DECISION and it's my turn
-  const showDrawModal = isHumanTurn && gameState?.turnPhase === TurnPhase.DRAW_DECISION;
-
   if (!gameState || onlineMenuState !== 'NONE') {
-    // Menu render...
     return (
       <div className="min-h-screen flex flex-col items-center justify-center bg-stone-100 p-4 font-sans text-stone-800">
         <h1 className="text-6xl md:text-8xl font-black text-transparent bg-clip-text bg-gradient-to-br from-stone-600 to-amber-700 mb-2 drop-shadow-sm tracking-tighter">CUBIRDS</h1>
@@ -378,6 +352,18 @@ const App: React.FC = () => {
                 <button onClick={handleJoinMenu} className="w-full mt-2 text-stone-400 font-bold hover:text-stone-600 hover:underline text-sm">Join Existing Room</button>
             </div>
         )}
+        
+        {opponentDisconnected && (
+             <div className="fixed inset-0 z-[100] flex items-center justify-center bg-stone-900/80 backdrop-blur-md px-4">
+                 <div className="bg-white p-8 rounded-3xl shadow-2xl max-w-md w-full border-4 border-white text-center animate-bounce-in">
+                     <div className="text-6xl mb-4">🔌</div>
+                     <h2 className="text-2xl font-bold text-stone-800 mb-2">Opponent Disconnected</h2>
+                     <p className="text-stone-500 mb-6">The room has been closed.</p>
+                     <button onClick={() => setOpponentDisconnected(false)} className="w-full bg-stone-800 text-white font-bold py-3 rounded-xl hover:bg-black transition-all">Back to Menu</button>
+                 </div>
+             </div>
+        )}
+
         {(onlineMenuState === 'NAMING_HOST') && (
              <div className="bg-white p-8 rounded-3xl shadow-2xl max-w-md w-full border-4 border-white animate-bounce-in text-center">
                  <h2 className="text-2xl font-bold text-stone-800 mb-6">Enter Your Name</h2>
@@ -415,7 +401,7 @@ const App: React.FC = () => {
                      <span className="w-2 h-2 bg-stone-400 rounded-full"></span><span className="w-2 h-2 bg-stone-400 rounded-full"></span><span className="w-2 h-2 bg-stone-400 rounded-full"></span>
                      <span>Waiting for opponent...</span>
                  </div>
-                 <button onClick={() => { setOnlineMenuState('NONE'); setIsOnlineGame(false); setRoomCode(''); setGameState(null); }} className="w-full py-3 text-stone-400 font-bold hover:text-stone-600">Cancel</button>
+                 <button onClick={() => { deleteRoom(roomCode); setOnlineMenuState('NONE'); setIsOnlineGame(false); setRoomCode(''); setGameState(null); }} className="w-full py-3 text-stone-400 font-bold hover:text-stone-600">Cancel</button>
              </div>
         )}
       </div>
@@ -451,23 +437,13 @@ const App: React.FC = () => {
              </div>
         </div>
         <Collection players={gameState.players} currentPlayerId={gameState.currentPlayerIndex} />
-        {!showDrawModal && (<div className="w-full max-w-4xl text-center mb-1 md:mb-4 h-6 md:h-8 flex items-center justify-center"><span className="inline-block bg-white border border-stone-200 text-stone-500 px-3 py-1 md:px-4 md:py-1.5 rounded-full text-[10px] md:text-xs font-medium shadow-sm transition-opacity duration-300 truncate max-w-[90%]">{gameState.lastActionLog[gameState.lastActionLog.length - 1]}</span></div>)}
+        <div className="w-full max-w-4xl text-center mb-1 md:mb-4 h-6 md:h-8 flex items-center justify-center"><span className="inline-block bg-white border border-stone-200 text-stone-500 px-3 py-1 md:px-4 md:py-1.5 rounded-full text-[10px] md:text-xs font-medium shadow-sm transition-opacity duration-300 truncate max-w-[90%]">{gameState.lastActionLog[gameState.lastActionLog.length - 1]}</span></div>
         <div className="space-y-1 md:space-y-3 w-full max-w-4xl pb-10">
             {gameState.rows.map((row, idx) => (
                 <Row key={idx} index={idx} birds={row} onSelectSide={handleSelectSide} isCurrentPlayerTurn={isHumanTurn && gameState.turnPhase === TurnPhase.PLAY} selectedBird={selectedBird} pendingMove={null} />
             ))}
         </div>
       </main>
-
-      {showDrawModal && (
-         <div className="fixed inset-0 z-[60] flex items-center justify-center bg-stone-900/40 backdrop-blur-sm px-4">
-            <div className="bg-white p-6 rounded-3xl shadow-2xl border-4 border-stone-100 w-full max-w-sm animate-bounce-in transform">
-                <h3 className="text-center text-xl font-black text-stone-800 mb-2 uppercase tracking-tight">No Capture!</h3>
-                <div className="bg-orange-50 rounded-xl p-4 mb-6 text-center"><div className="flex flex-col items-center gap-2"><span className="text-3xl font-black text-orange-400">Draw 2 Cards?</span><p className="text-xs text-stone-400 mt-2">If you skip and hand is empty, round ends.</p></div></div>
-                <div className="flex gap-3"><button onClick={skipDraw} className="flex-1 py-3 rounded-xl font-bold text-stone-500 bg-stone-100 hover:bg-stone-200 transition-colors">Skip</button><button onClick={confirmDraw} className="flex-1 py-3 rounded-xl font-black bg-orange-400 text-white hover:bg-orange-500 shadow-lg hover:translate-y-[-2px] transition-all">DRAW</button></div>
-            </div>
-         </div>
-      )}
 
       {showQuitConfirm && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm px-4">

@@ -42,7 +42,6 @@ export const PlayerArea: React.FC<PlayerAreaProps> = ({
   }, [selectedBird, groupedHand]);
 
   const isPlayPhase = phase === TurnPhase.PLAY;
-  const isDrawDecision = phase === TurnPhase.DRAW_DECISION;
 
   return (
     <div className={`
@@ -55,7 +54,7 @@ export const PlayerArea: React.FC<PlayerAreaProps> = ({
         <div className="flex flex-row md:flex-col items-center md:items-start justify-between w-full md:w-auto md:min-w-[120px] pt-1 md:pt-0 px-2 md:px-0">
           <h3 className={`font-bold text-sm md:text-lg transition-colors ${isCurrentTurn ? 'text-emerald-600' : 'text-stone-400'}`}>
             {isCurrentTurn 
-                ? (isDrawDecision ? "Draw Cards?" : isPlayPhase ? "Play a Card" : "Flock or Pass") 
+                ? (isPlayPhase ? "Play a Card" : "Flock or Pass") 
                 : "Opponent's Turn"}
           </h3>
           {!isHidden && <div className="text-[10px] md:text-xs text-stone-400 font-medium">{player.hand.length} cards</div>}
@@ -76,7 +75,7 @@ export const PlayerArea: React.FC<PlayerAreaProps> = ({
                     const isFlocking = flockingBirdType === type;
                     const canThisBirdFlock = count >= BIRD_DATA[type].smallFlock;
                     const stackDepth = Math.min(count - 1, 2); 
-                    const isDisabled = !isCurrentTurn || isDrawDecision;
+                    const isDisabled = !isCurrentTurn;
 
                     return (
                         <div key={type} className={`
@@ -120,7 +119,7 @@ export const PlayerArea: React.FC<PlayerAreaProps> = ({
                  </div>
              ) : (
                  <div className={`w-full px-6 py-3 md:py-4 rounded-xl border-2 border-dashed text-center font-bold text-xs md:text-sm ${isCurrentTurn ? 'border-stone-300 text-stone-400 bg-stone-50' : 'border-stone-200 text-stone-300'}`}>
-                    {isCurrentTurn ? (isDrawDecision ? 'Decide...' : selectedBird ? 'Click Row or Drag' : 'Select Card') : 'Wait...'}
+                    {isCurrentTurn ? (selectedBird ? 'Click Row or Drag' : 'Select Card') : 'Wait...'}
                  </div>
              )}
         </div>
