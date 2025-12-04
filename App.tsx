@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { GameState, MoveType, BirdType, GameMove, MoveOutcome, TurnPhase } from './types';
-import { initializeGame, applyMove } from './services/gameLogic';
+import { initializeGame, applyMove, getFlockableCount } from './services/gameLogic';
 import { getAiMove, initGemini } from './services/geminiService';
 import { playSound } from './services/audioService';
 import { createRoom, joinRoom, subscribeToRoom, updateGameState } from './services/firebase'; 
@@ -18,7 +18,9 @@ const App: React.FC = () => {
   const [showQuitConfirm, setShowQuitConfirm] = useState(false);
   
   // Online / Lobby State
-  const [onlineMenuState, setOnlineMenuState] = useState<'NONE' | 'CREATE' | 'JOIN'>('NONE');
+  // NONE -> [NAMING_HOST] -> CREATE
+  // NONE -> [NAMING_JOIN] -> JOIN
+  const [onlineMenuState, setOnlineMenuState] = useState<'NONE' | 'NAMING_HOST' | 'CREATE' | 'NAMING_JOIN' | 'JOIN'>('NONE');
   const [roomCode, setRoomCode] = useState<string>('');
   const [joinCodeInput, setJoinCodeInput] = useState<string>('');
   const [playerNameInput, setPlayerNameInput] = useState<string>('');
@@ -27,7 +29,6 @@ const App: React.FC = () => {
   const [onlineStatus, setOnlineStatus] = useState<string>('');
 
   const [countdown, setCountdown] = useState<number | null>(null);
-  const [timerDuration, setTimerDuration] = useState<number>(10);
   const timerRef = useRef<number | null>(null);
 
   const [drawConfirmation, setDrawConfirmation] = useState<{ outcome: MoveOutcome } | null>(null);
@@ -42,7 +43,9 @@ const App: React.FC = () => {
       if (!state) return state;
       const asArray = (val: any) => val ? (Array.isArray(val) ? val : Object.values(val)) : [];
 
+      // CRITICAL FIX: Explicitly handle winner null
       if (state.winner === undefined) state.winner = null;
+      
       state.deck = asArray(state.deck);
       state.discardPile = asArray(state.discardPile);
       state.lastActionLog = asArray(state.lastActionLog);
@@ -131,10 +134,8 @@ const App: React.FC = () => {
       const result = await joinRoom(joinCodeInput);
       if (result.success && result.gameState) {
           const newState = sanitizeGameState(result.gameState);
-          
           if (newState.players[1]) newState.players[1].name = playerNameInput || "Joiner";
           newState.lastActionLog.push(`${playerNameInput || "Opponent"} joined the game!`);
-          
           await updateGameState(joinCodeInput, newState);
           
           setRoomCode(joinCodeInput);
@@ -149,8 +150,8 @@ const App: React.FC = () => {
       }
   };
 
-  const handleCreateRoomClick = () => { setPlayerNameInput(''); setOnlineMenuState('CREATE'); }; 
-  const handleJoinRoomClick = () => { playSound('click'); setOnlineMenuState('JOIN'); setJoinCodeInput(''); setOnlineStatus(''); setPlayerNameInput(''); };
+  const handleCreateMenu = () => { playSound('click'); setPlayerNameInput(''); setOnlineMenuState('NAMING_HOST'); };
+  const handleJoinMenu = () => { playSound('click'); setPlayerNameInput(''); setOnlineMenuState('NAMING_JOIN'); };
 
   const quitGame = () => {
     setGameState(null);
@@ -221,12 +222,13 @@ const App: React.FC = () => {
             setGameState(prev => {
                 if (!prev) return null;
                 const p = prev.players[prev.currentPlayerIndex];
-                const handCounts = p.hand.reduce((acc, b) => { acc[b]=(acc[b]||0)+1; return acc; }, {} as Record<string, number>);
-                const flockable = Object.keys(handCounts).find(key => {
-                    const type = key as BirdType;
-                    return handCounts[key]! >= BIRD_DATA[type].smallFlock;
-                });
-                if (flockable) {
+                const flockableCount = getFlockableCount(p);
+                if (flockableCount > 0) {
+                    const flockable = Object.keys(p.hand.reduce((acc, b) => { acc[b]=(acc[b]||0)+1; return acc; }, {} as Record<string, number>))
+                        .find(key => {
+                            const type = key as BirdType;
+                            return p.hand.filter(b => b === type).length >= BIRD_DATA[type].smallFlock;
+                        });
                     const outcome = applyMove(prev, { type: MoveType.FLOCK, birdType: flockable as BirdType });
                     playSound('success');
                     return outcome.newState;
@@ -246,9 +248,6 @@ const App: React.FC = () => {
     }
   }, [gameState, executeAiTurn]);
 
-  // Determine whose hand to show at the bottom
-  // LOCAL: Always Human (Player 0) or current player if hotseat
-  // ONLINE: Always My ID
   const humanPlayer = gameState 
     ? (isOnlineGame 
         ? gameState.players[myPlayerId] 
@@ -261,6 +260,34 @@ const App: React.FC = () => {
         : (!gameState.players[gameState.currentPlayerIndex].isAi)) 
     : false;
 
+  // --- TIMER LOGIC ---
+  useEffect(() => {
+    if (timerRef.current) clearInterval(timerRef.current);
+    
+    if (isHumanTurn && gameState?.turnPhase === TurnPhase.FLOCK_OR_PASS && humanPlayer) {
+        const flockableCount = getFlockableCount(humanPlayer);
+        let duration = 5;
+        if (flockableCount === 1) duration = 15;
+        if (flockableCount >= 2) duration = 20;
+
+        setCountdown(duration);
+        
+        timerRef.current = window.setInterval(() => {
+            setCountdown(prev => {
+                if (prev !== null && prev <= 1) {
+                    clearInterval(timerRef.current!);
+                    handlePass();
+                    return 0;
+                }
+                return (prev || 0) - 1;
+            });
+        }, 1000);
+    } else {
+        setCountdown(null);
+    }
+    return () => { if (timerRef.current) clearInterval(timerRef.current); };
+  }, [gameState?.turnPhase, isHumanTurn, humanPlayer, handlePass]);
+
   const handleSelectSide = (rowIndex: number, side: 'LEFT' | 'RIGHT') => {
     if (!gameState || !selectedBird || gameState.turnPhase !== TurnPhase.PLAY) return;
     if (isOnlineGame && gameState.currentPlayerIndex !== myPlayerId) return; 
@@ -269,7 +296,7 @@ const App: React.FC = () => {
     const outcome = applyMove(gameState, move);
 
     if (outcome.captured.length > 0) playSound('capture');
-    else if (outcome.drawn > 0) playSound('pop'); // Just sound, modal handles phase
+    else if (outcome.drawn > 0) playSound('pop');
     else playSound('pop');
 
     syncMove(outcome.newState);
@@ -306,35 +333,44 @@ const App: React.FC = () => {
   if (!gameState || onlineMenuState !== 'NONE') {
     return (
       <div className="min-h-screen flex flex-col items-center justify-center bg-stone-100 p-4 font-sans text-stone-800">
-        <h1 className="text-6xl md:text-8xl font-black text-transparent bg-clip-text bg-gradient-to-br from-teal-500 to-indigo-600 mb-2 drop-shadow-sm tracking-tighter">CUBIRDS</h1>
+        <h1 className="text-6xl md:text-8xl font-black text-transparent bg-clip-text bg-gradient-to-br from-stone-600 to-amber-700 mb-2 drop-shadow-sm tracking-tighter">CUBIRDS</h1>
         <p className="text-stone-500 mb-8 md:mb-12 font-medium text-lg md:text-xl">The strategic card game of bird collection.</p>
 
         {onlineMenuState === 'NONE' && (
-            <div className="bg-white p-8 rounded-3xl shadow-2xl max-w-md w-full border-4 border-white ring-1 ring-stone-200 animate-bounce-in">
-                <button onClick={() => startGame(false)} className="w-full bg-stone-800 hover:bg-stone-900 text-white font-bold py-5 rounded-2xl mb-4 transition-all shadow-md hover:-translate-y-1 flex items-center justify-center gap-3 text-lg"><span className="text-2xl">👥</span> Pass & Play</button>
-                <button onClick={() => startGame(true)} className="w-full bg-gradient-to-r from-blue-500 to-indigo-600 hover:from-blue-600 hover:to-indigo-700 text-white font-bold py-5 rounded-2xl mb-4 transition-all shadow-md hover:-translate-y-1 flex items-center justify-center gap-3 text-lg"><span className="text-2xl">✨</span> Play vs AI</button>
-                <div className="flex flex-col gap-2">
-                    <input 
-                        type="text" 
-                        placeholder="Your Name (Optional)" 
-                        value={playerNameInput}
-                        onChange={(e) => setPlayerNameInput(e.target.value)}
-                        className="w-full px-4 py-3 rounded-xl border-2 border-stone-200 text-center font-bold text-stone-600 focus:border-indigo-400 outline-none"
-                    />
-                    <button onClick={() => { if(playerNameInput.trim()) startOnlineHost(); else alert('Please enter a name first'); }} className="w-full bg-white border-2 border-stone-200 text-stone-600 hover:bg-stone-50 font-bold py-4 rounded-2xl transition-all hover:-translate-y-1 flex items-center justify-center gap-3"><span className="text-xl">🌐</span> Create Online Room</button>
-                    <button onClick={handleJoinRoomClick} className="w-full mt-2 text-stone-400 font-bold hover:text-stone-600 hover:underline text-sm">Join Existing Room</button>
-                </div>
+            <div className="bg-white p-8 rounded-3xl shadow-2xl max-w-md w-full border-4 border-white ring-1 ring-stone-200 animate-bounce-in flex flex-col gap-3">
+                <button onClick={() => startGame(false)} className="w-full bg-stone-700 hover:bg-stone-800 text-white font-bold py-5 rounded-2xl transition-all shadow-md hover:-translate-y-1 flex items-center justify-center gap-3 text-lg"><span className="text-2xl">👥</span> Pass & Play</button>
+                <button onClick={() => startGame(true)} className="w-full bg-amber-600 hover:bg-amber-700 text-white font-bold py-5 rounded-2xl transition-all shadow-md hover:-translate-y-1 flex items-center justify-center gap-3 text-lg"><span className="text-2xl">✨</span> Play vs AI</button>
+                <button onClick={handleCreateMenu} className="w-full bg-white border-2 border-stone-200 text-stone-600 hover:bg-stone-50 font-bold py-4 rounded-2xl transition-all hover:-translate-y-1 flex items-center justify-center gap-3"><span className="text-xl">🌐</span> Create Online Room</button>
+                <button onClick={handleJoinMenu} className="w-full mt-1 text-stone-400 font-bold hover:text-stone-600 hover:underline text-sm">Join Existing Room</button>
             </div>
+        )}
+
+        {(onlineMenuState === 'NAMING_HOST') && (
+             <div className="bg-white p-8 rounded-3xl shadow-2xl max-w-md w-full border-4 border-white animate-bounce-in text-center">
+                 <h2 className="text-2xl font-bold text-stone-800 mb-6">Enter Your Name</h2>
+                 <input type="text" value={playerNameInput} onChange={(e) => setPlayerNameInput(e.target.value)} placeholder="Host Name" className="w-full bg-stone-50 text-center text-xl font-bold text-stone-700 p-4 rounded-xl mb-6 outline-none border-2 border-transparent focus:border-amber-400" />
+                 <button onClick={() => { if(playerNameInput.trim()) startOnlineHost(); }} disabled={!playerNameInput.trim()} className="w-full bg-stone-800 hover:bg-black disabled:bg-stone-300 text-white font-bold py-4 rounded-2xl mb-3 transition-all">Create Room</button>
+                 <button onClick={() => setOnlineMenuState('NONE')} className="w-full py-2 text-stone-400 font-bold hover:text-stone-600">Back</button>
+             </div>
+        )}
+
+        {(onlineMenuState === 'NAMING_JOIN') && (
+             <div className="bg-white p-8 rounded-3xl shadow-2xl max-w-md w-full border-4 border-white animate-bounce-in text-center">
+                 <h2 className="text-2xl font-bold text-stone-800 mb-6">Enter Your Name</h2>
+                 <input type="text" value={playerNameInput} onChange={(e) => setPlayerNameInput(e.target.value)} placeholder="Your Name" className="w-full bg-stone-50 text-center text-xl font-bold text-stone-700 p-4 rounded-xl mb-6 outline-none border-2 border-transparent focus:border-amber-400" />
+                 <button onClick={() => { if(playerNameInput.trim()) setOnlineMenuState('JOIN'); }} disabled={!playerNameInput.trim()} className="w-full bg-stone-800 hover:bg-black disabled:bg-stone-300 text-white font-bold py-4 rounded-2xl mb-3 transition-all">Next</button>
+                 <button onClick={() => setOnlineMenuState('NONE')} className="w-full py-2 text-stone-400 font-bold hover:text-stone-600">Back</button>
+             </div>
         )}
 
         {onlineMenuState === 'JOIN' && (
              <div className="bg-white p-8 rounded-3xl shadow-2xl max-w-md w-full border-4 border-white animate-bounce-in text-center">
                  <h2 className="text-2xl font-bold text-stone-800 mb-6">Join Room</h2>
-                 <input type="text" value={playerNameInput} onChange={(e) => setPlayerNameInput(e.target.value)} placeholder="Your Name" className="w-full bg-stone-50 text-center text-lg font-bold text-stone-700 p-3 rounded-xl mb-4 outline-none border-2 border-transparent focus:border-indigo-400" />
-                 <input type="text" value={joinCodeInput} onChange={(e) => setJoinCodeInput(e.target.value.replace(/\D/g,'').slice(0,4))} placeholder="Enter 4-Digit Code" maxLength={4} inputMode="numeric" className="w-full bg-stone-100 text-center text-3xl font-black text-indigo-600 p-4 rounded-xl mb-6 outline-none border-2 border-transparent focus:border-indigo-400 transition-all placeholder:text-stone-300" />
-                 {onlineStatus && <p className="text-indigo-400 text-sm mb-4 font-bold">{onlineStatus}</p>}
-                 <button onClick={joinOnlineGame} disabled={joinCodeInput.length !== 4 || !playerNameInput.trim()} className="w-full bg-indigo-500 hover:bg-indigo-600 disabled:bg-stone-200 disabled:text-stone-400 text-white font-bold py-4 rounded-2xl mb-4 transition-all">Join Game</button>
-                 <button onClick={() => { setOnlineMenuState('NONE'); setOnlineStatus(''); }} className="w-full py-2 text-stone-400 font-bold hover:text-stone-600">Back</button>
+                 <p className="text-stone-500 mb-4 font-bold">Playing as: {playerNameInput}</p>
+                 <input type="text" value={joinCodeInput} onChange={(e) => setJoinCodeInput(e.target.value.replace(/\D/g,'').slice(0,4))} placeholder="4-Digit Code" maxLength={4} inputMode="numeric" className="w-full bg-stone-100 text-center text-3xl font-black text-amber-600 p-4 rounded-xl mb-6 outline-none border-2 border-transparent focus:border-amber-400 transition-all placeholder:text-stone-300" />
+                 {onlineStatus && <p className="text-amber-500 text-sm mb-4 font-bold">{onlineStatus}</p>}
+                 <button onClick={joinOnlineGame} disabled={joinCodeInput.length !== 4} className="w-full bg-amber-500 hover:bg-amber-600 disabled:bg-stone-200 disabled:text-stone-400 text-white font-bold py-4 rounded-2xl mb-4 transition-all">Join Game</button>
+                 <button onClick={() => { setOnlineMenuState('NAMING_JOIN'); setOnlineStatus(''); }} className="w-full py-2 text-stone-400 font-bold hover:text-stone-600">Back</button>
              </div>
         )}
         
@@ -343,7 +379,7 @@ const App: React.FC = () => {
                  <h2 className="text-2xl font-bold text-stone-800 mb-4">Room Created</h2>
                  <div className="bg-stone-100 p-6 rounded-2xl mb-6">
                      <div className="text-sm text-stone-500 mb-2 uppercase tracking-wide">Room Code</div>
-                     <div className="text-5xl font-black text-indigo-500 tracking-widest">{roomCode}</div>
+                     <div className="text-5xl font-black text-amber-600 tracking-widest">{roomCode}</div>
                  </div>
                  <div className="flex items-center justify-center gap-2 mb-8 text-stone-400 animate-pulse">
                      <span className="w-2 h-2 bg-stone-400 rounded-full"></span><span className="w-2 h-2 bg-stone-400 rounded-full"></span><span className="w-2 h-2 bg-stone-400 rounded-full"></span>
@@ -367,7 +403,7 @@ const App: React.FC = () => {
       <main className="flex-1 flex flex-col items-center pt-2 md:pt-8 px-2 overflow-x-hidden w-full relative">
         <div className="hidden md:flex w-full max-w-5xl justify-between items-center mb-6 px-4">
              <div className="flex items-center gap-4"><button onClick={() => setShowQuitConfirm(true)} className="text-stone-400 hover:text-red-500 font-bold px-4 py-2 rounded-xl bg-white border border-stone-200 hover:bg-red-50 hover:border-red-200 transition-colors">← Quit Game</button><div className="font-black text-3xl text-stone-300 tracking-tighter">CUBIRDS</div></div>
-             {isOnlineGame && (<div className="flex items-center gap-2 bg-indigo-50 px-4 py-2 rounded-full border border-indigo-100"><span className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></span><span className="text-indigo-600 font-bold text-sm">Room: {roomCode}</span></div>)}
+             {isOnlineGame && (<div className="flex items-center gap-2 bg-amber-50 px-4 py-2 rounded-full border border-amber-100"><span className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></span><span className="text-amber-600 font-bold text-sm">Room: {roomCode}</span></div>)}
              {gameState.isAiThinking && (<div className="flex items-center gap-2 text-indigo-500 font-bold animate-pulse bg-indigo-50 px-4 py-2 rounded-full">✨ Gemini is thinking...</div>)}
              <div className="text-sm font-medium text-stone-400 bg-white px-3 py-1 rounded-full border border-stone-200 shadow-sm">Deck: {gameState.deck.length} | Round: {Math.ceil(gameState.lastActionLog.filter(l => l.includes('Round')).length)}</div>
         </div>
@@ -424,7 +460,6 @@ const App: React.FC = () => {
                 onPass={handlePass} 
                 isHidden={false} 
                 countdown={countdown} 
-                onTimerSet={setTimerDuration} 
                 flockingBirdType={flockingBird} 
             />
         </div>

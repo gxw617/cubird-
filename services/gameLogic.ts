@@ -279,4 +279,70 @@ export const applyMove = (state: GameState, move: GameMove): MoveOutcome => {
   // --- PLAY ---
   if (move.type === MoveType.PLAY) {
     if (newState.turnPhase !== TurnPhase.PLAY) return outcome;
-    if (move.rowIndex === undefined || move.side
+    if (move.rowIndex === undefined || move.side === undefined || !move.birdType) return outcome;
+
+    const cardsToPlay = player.hand.filter(b => b === move.birdType);
+    if (cardsToPlay.length === 0) return outcome;
+
+    player.hand = player.hand.filter(b => b !== move.birdType);
+    
+    const row = newState.rows[move.rowIndex];
+    if (move.side === 'LEFT') {
+      row.unshift(...cardsToPlay);
+    } else {
+      row.push(...cardsToPlay);
+    }
+
+    // Capture Logic
+    let captured: BirdType[] = [];
+    const containsPlayedType = (birds: BirdType[]) => birds.some(b => b === move.birdType);
+
+    if (move.side === 'LEFT') {
+      const startSearchIdx = cardsToPlay.length;
+      const firstMatchIndex = row.slice(startSearchIdx).findIndex(b => b === move.birdType);
+      
+      if (firstMatchIndex !== -1) {
+        const absoluteMatchIndex = startSearchIdx + firstMatchIndex;
+        const potentialVictims = row.slice(startSearchIdx, absoluteMatchIndex);
+        if (potentialVictims.length > 0 && !containsPlayedType(potentialVictims)) {
+            captured = row.splice(startSearchIdx, absoluteMatchIndex - startSearchIdx);
+        }
+      }
+    } else {
+      const originalRowLength = row.length - cardsToPlay.length;
+      let lastMatchIndex = -1;
+      for (let i = originalRowLength - 1; i >= 0; i--) {
+        if (row[i] === move.birdType) {
+          lastMatchIndex = i;
+          break;
+        }
+      }
+      if (lastMatchIndex !== -1) {
+          const potentialVictims = row.slice(lastMatchIndex + 1, originalRowLength);
+          if (potentialVictims.length > 0 && !containsPlayedType(potentialVictims)) {
+             captured = row.splice(lastMatchIndex + 1, originalRowLength - (lastMatchIndex + 1));
+          }
+      }
+    }
+
+    if (captured.length > 0) {
+      player.hand.push(...captured);
+      player.hand.sort();
+      outcome.captured = captured;
+      outcome.message = `${player.name} played ${move.birdType}, captured ${captured.length}.`;
+      newState.turnPhase = TurnPhase.FLOCK_OR_PASS;
+    } else {
+      // NO CAPTURE -> DRAW DECISION
+      outcome.message = `${player.name} played ${move.birdType}, no capture.`;
+      newState.turnPhase = TurnPhase.DRAW_DECISION; 
+    }
+
+    ensureRowValidity(row, newState);
+    newState.lastActionLog.push(outcome.message);
+    
+    outcome.isValid = true;
+    return outcome;
+  }
+
+  return outcome;
+};

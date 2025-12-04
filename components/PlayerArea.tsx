@@ -1,4 +1,4 @@
-import React, { useMemo, useEffect } from 'react';
+import React, { useMemo } from 'react';
 import { Player, BirdType, TurnPhase } from '../types';
 import { Card } from './Card';
 import { BIRD_DATA } from '../constants';
@@ -12,13 +12,12 @@ interface PlayerAreaProps {
   onFlock: () => void;
   onPass: () => void;
   isHidden?: boolean; 
-  onTimerSet?: (duration: number) => void; 
   countdown?: number | null;
   flockingBirdType?: BirdType | null; 
 }
 
 export const PlayerArea: React.FC<PlayerAreaProps> = ({ 
-    player, isCurrentTurn, phase, selectedBird, onSelectBird, onFlock, onPass, isHidden, onTimerSet, countdown, flockingBirdType
+    player, isCurrentTurn, phase, selectedBird, onSelectBird, onFlock, onPass, isHidden, countdown, flockingBirdType
 }) => {
   const groupedHand = useMemo(() => {
     const groups: Partial<Record<BirdType, number>> = {};
@@ -41,15 +40,8 @@ export const PlayerArea: React.FC<PlayerAreaProps> = ({
     return groupedHand[selectedBird]! >= BIRD_DATA[selectedBird].smallFlock;
   }, [selectedBird, groupedHand]);
 
-  useEffect(() => {
-    if (isCurrentTurn && phase === TurnPhase.FLOCK_OR_PASS && onTimerSet) {
-        onTimerSet(flockOptions === 0 ? 5 : flockOptions === 1 ? 15 : 20);
-    }
-  }, [isCurrentTurn, phase, flockOptions, onTimerSet]);
-
   const isPlayPhase = phase === TurnPhase.PLAY;
   const isFlockPhase = phase === TurnPhase.FLOCK_OR_PASS;
-  // Use DRAW_DECISION phase to show a prompt
   const isDrawDecision = phase === TurnPhase.DRAW_DECISION;
 
   return (
