@@ -29,6 +29,7 @@ const App: React.FC = () => {
   const [onlineStatus, setOnlineStatus] = useState<string>('');
 
   const [countdown, setCountdown] = useState<number | null>(null);
+  const [timerDuration, setTimerDuration] = useState<number>(10);
   const timerRef = useRef<number | null>(null);
 
   const [drawConfirmation, setDrawConfirmation] = useState<{ outcome: MoveOutcome } | null>(null);
@@ -43,9 +44,7 @@ const App: React.FC = () => {
       if (!state) return state;
       const asArray = (val: any) => val ? (Array.isArray(val) ? val : Object.values(val)) : [];
 
-      // CRITICAL FIX: Explicitly handle winner null
       if (state.winner === undefined) state.winner = null;
-      
       state.deck = asArray(state.deck);
       state.discardPile = asArray(state.discardPile);
       state.lastActionLog = asArray(state.lastActionLog);
@@ -209,7 +208,6 @@ const App: React.FC = () => {
             return { ...moveResult.newState, isAiThinking: false };
         });
     } else if (currentState.turnPhase === TurnPhase.DRAW_DECISION) {
-        // AI Logic for Draw Decision: Always Draw for now (simple)
         setTimeout(() => {
             setGameState(prev => {
                 if(!prev) return null;
@@ -259,6 +257,8 @@ const App: React.FC = () => {
         ? gameState.currentPlayerIndex === myPlayerId 
         : (!gameState.players[gameState.currentPlayerIndex].isAi)) 
     : false;
+
+  const showDrawModal = isHumanTurn && gameState?.turnPhase === TurnPhase.DRAW_DECISION;
 
   // --- TIMER LOGIC ---
   useEffect(() => {
@@ -338,10 +338,25 @@ const App: React.FC = () => {
 
         {onlineMenuState === 'NONE' && (
             <div className="bg-white p-8 rounded-3xl shadow-2xl max-w-md w-full border-4 border-white ring-1 ring-stone-200 animate-bounce-in flex flex-col gap-3">
-                <button onClick={() => startGame(false)} className="w-full bg-stone-700 hover:bg-stone-800 text-white font-bold py-5 rounded-2xl transition-all shadow-md hover:-translate-y-1 flex items-center justify-center gap-3 text-lg"><span className="text-2xl">👥</span> Pass & Play</button>
-                <button onClick={() => startGame(true)} className="w-full bg-amber-600 hover:bg-amber-700 text-white font-bold py-5 rounded-2xl transition-all shadow-md hover:-translate-y-1 flex items-center justify-center gap-3 text-lg"><span className="text-2xl">✨</span> Play vs AI</button>
-                <button onClick={handleCreateMenu} className="w-full bg-white border-2 border-stone-200 text-stone-600 hover:bg-stone-50 font-bold py-4 rounded-2xl transition-all hover:-translate-y-1 flex items-center justify-center gap-3"><span className="text-xl">🌐</span> Create Online Room</button>
-                <button onClick={handleJoinMenu} className="w-full mt-1 text-stone-400 font-bold hover:text-stone-600 hover:underline text-sm">Join Existing Room</button>
+                {/* Pass & Play */}
+                <button onClick={() => startGame(false)} className="w-full bg-stone-600 hover:bg-stone-700 text-white font-bold py-4 px-6 rounded-2xl transition-all shadow-md hover:-translate-y-1 flex items-center">
+                    <span className="text-2xl w-12 text-center drop-shadow-md">👥</span>
+                    <span className="flex-1 text-center text-lg">Pass & Play</span>
+                </button>
+                
+                {/* Play vs AI */}
+                <button onClick={() => startGame(true)} className="w-full bg-amber-500 hover:bg-amber-600 text-white font-bold py-4 px-6 rounded-2xl transition-all shadow-md hover:-translate-y-1 flex items-center">
+                    <span className="text-2xl w-12 text-center drop-shadow-md">✨</span>
+                    <span className="flex-1 text-center text-lg">Play vs AI</span>
+                </button>
+                
+                {/* Create Online - Emerald */}
+                <button onClick={handleCreateMenu} className="w-full bg-emerald-500 hover:bg-emerald-600 text-white font-bold py-4 px-6 rounded-2xl transition-all shadow-md hover:-translate-y-1 flex items-center">
+                    <span className="text-xl w-12 text-center drop-shadow-md">🌐</span>
+                    <span className="flex-1 text-center text-lg">Create Online Room</span>
+                </button>
+                
+                <button onClick={handleJoinMenu} className="w-full mt-2 text-stone-400 font-bold hover:text-stone-600 hover:underline text-sm">Join Existing Room</button>
             </div>
         )}
 
@@ -391,8 +406,6 @@ const App: React.FC = () => {
       </div>
     );
   }
-
-  const showDrawModal = gameState && gameState.turnPhase === TurnPhase.DRAW_DECISION && isHumanTurn;
 
   return (
     <div className="min-h-screen bg-stone-50 pb-[300px] flex flex-col md:flex-row">
