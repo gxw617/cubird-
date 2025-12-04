@@ -1,3 +1,4 @@
+
 export enum BirdType {
   PARROT = 'Parrot',
   OWL = 'Owl',
@@ -29,7 +30,7 @@ export interface Player {
 
 export enum TurnPhase {
   PLAY = 'PLAY',         // Must play cards
-  DRAW_DECISION = 'DRAW_DECISION', // New: Must decide to Draw or Skip
+  DRAW_DECISION = 'DRAW_DECISION', // Optional Draw decision
   FLOCK_OR_PASS = 'FLOCK_OR_PASS' // Can flock or pass turn
 }
 
@@ -50,8 +51,8 @@ export enum MoveType {
   PLAY = 'PLAY',
   FLOCK = 'FLOCK',
   PASS = 'PASS',
-  DRAW_CARDS = 'DRAW_CARDS', // New
-  SKIP_DRAW = 'SKIP_DRAW' // New
+  DRAW_CARDS = 'DRAW_CARDS',
+  SKIP_DRAW = 'SKIP_DRAW'
 }
 
 export interface GameMove {

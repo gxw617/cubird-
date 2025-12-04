@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { GameState, MoveType, BirdType, GameMove, MoveOutcome, TurnPhase } from './types';
 import { initializeGame, applyMove, getFlockableCount } from './services/gameLogic';
@@ -29,6 +30,7 @@ const App: React.FC = () => {
   const [timerDuration, setTimerDuration] = useState<number>(10);
   const timerRef = useRef<number | null>(null);
 
+  // Restore drawConfirmation modal for optional draw
   const [drawConfirmation, setDrawConfirmation] = useState<{ outcome: MoveOutcome } | null>(null);
   const [flockingBird, setFlockingBird] = useState<BirdType | null>(null);
   const [viewBoardMode, setViewBoardMode] = useState(false);
@@ -152,7 +154,6 @@ const App: React.FC = () => {
   const quitGame = () => {
     setGameState(null);
     setSelectedBird(null);
-    setDrawConfirmation(null);
     setShowQuitConfirm(false);
     setViewBoardMode(false);
     setIsOnlineGame(false);
@@ -198,16 +199,24 @@ const App: React.FC = () => {
                 side: 'LEFT'
             });
 
-            if (moveResult.captured.length > 0) playSound('capture');
-            else if (moveResult.drawn > 0) playSound('draw');
-            else playSound('pop');
+            if (moveResult.captured.length > 0) {
+                playSound('whoosh');
+                playSound('capture');
+            } else if (moveResult.drawn > 0) {
+                // In optional draw phase, AI will decide in next block
+                playSound('pop');
+            } else {
+                playSound('pop');
+            }
 
             return { ...moveResult.newState, isAiThinking: false };
         });
     } else if (currentState.turnPhase === TurnPhase.DRAW_DECISION) {
+        // AI Logic: Always Draw
         setTimeout(() => {
             setGameState(prev => {
                 if(!prev) return null;
+                playSound('draw');
                 const outcome = applyMove(prev, { type: MoveType.DRAW_CARDS });
                 return outcome.newState;
             });
@@ -244,11 +253,23 @@ const App: React.FC = () => {
     }
   }, [gameState, executeAiTurn]);
 
-  const humanPlayer = gameState 
-    ? (isOnlineGame 
-        ? gameState.players[myPlayerId] 
-        : (gameState.players.find(p => !p.isAi) || gameState.players[0]))
-    : null;
+  // Determine whose hand to show at the bottom
+  // ONLINE: Always my ID
+  // LOCAL AI: Player 0 (Human)
+  // LOCAL PASS & PLAY: Current Player (Hotseat) - FIXED
+  let humanPlayer = null;
+  if (gameState) {
+      if (isOnlineGame) {
+          humanPlayer = gameState.players[myPlayerId];
+      } else {
+          const current = gameState.players[gameState.currentPlayerIndex];
+          if (current.isAi) {
+              humanPlayer = gameState.players[0]; // If AI turn, show Human P1
+          } else {
+              humanPlayer = current; // Human turn (P1 or P2 in Pass&Play), show active player
+          }
+      }
+  }
 
   const isHumanTurn = gameState 
     ? (isOnlineGame 
@@ -292,12 +313,21 @@ const App: React.FC = () => {
     if (outcome.captured.length > 0) {
         playSound('whoosh');
         playSound('capture');
+        syncMove(outcome.newState);
+        setSelectedBird(null);
     }
-    else if (outcome.drawn > 0) playSound('pop');
-    else playSound('pop');
-
-    syncMove(outcome.newState);
-    setSelectedBird(null);
+    else if (outcome.drawn > 0) {
+        // Impossible in current logic as outcome.drawn is 0 for phase change
+    } else {
+        // No Capture -> Optional Draw phase
+        playSound('pop');
+        setDrawConfirmation({ outcome });
+        // Don't sync yet if we want to show local modal decision, BUT
+        // `applyMove` already changed the state to DRAW_DECISION. 
+        // We sync the row changes, but the phase will lock UI.
+        syncMove(outcome.newState);
+        setSelectedBird(null);
+    }
   };
 
   const confirmDraw = () => {
@@ -305,12 +335,14 @@ const App: React.FC = () => {
       playSound('draw');
       const outcome = applyMove(gameState, { type: MoveType.DRAW_CARDS });
       syncMove(outcome.newState);
+      setDrawConfirmation(null);
   };
 
   const skipDraw = () => {
     if (!gameState) return;
     const outcome = applyMove(gameState, { type: MoveType.SKIP_DRAW });
     syncMove(outcome.newState);
+    setDrawConfirmation(null);
   };
 
   const handleFlock = () => {
@@ -328,9 +360,11 @@ const App: React.FC = () => {
     }, 600); 
   };
 
+  // Show modal if phase is DRAW_DECISION and it's my turn
   const showDrawModal = isHumanTurn && gameState?.turnPhase === TurnPhase.DRAW_DECISION;
 
   if (!gameState || onlineMenuState !== 'NONE') {
+    // Menu render...
     return (
       <div className="min-h-screen flex flex-col items-center justify-center bg-stone-100 p-4 font-sans text-stone-800">
         <h1 className="text-6xl md:text-8xl font-black text-transparent bg-clip-text bg-gradient-to-br from-stone-600 to-amber-700 mb-2 drop-shadow-sm tracking-tighter">CUBIRDS</h1>

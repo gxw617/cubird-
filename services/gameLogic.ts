@@ -1,3 +1,4 @@
+
 import { BIRD_DATA, INITIAL_HAND_SIZE, INITIAL_ROW_CARDS, ROW_COUNT } from '../constants';
 import { BirdType, GameState, Player, MoveType, GameMove, MoveOutcome, TurnPhase } from '../types';
 
@@ -38,12 +39,12 @@ const drawCard = (state: GameState): BirdType | undefined => {
 
 const dealHands = (state: GameState) => {
     state.players.forEach(p => {
-        p.hand = []; // Clear existing hands to ensure no duplication
+        p.hand = []; 
         for(let k=0; k<INITIAL_HAND_SIZE; k++) {
             const card = drawCard(state);
             if(card) p.hand.push(card);
         }
-        p.hand.sort(); // Sort for better UI, logic doesn't depend on order
+        p.hand.sort();
     });
 };
 
@@ -67,12 +68,10 @@ export const initializeGame = (playerNames: string[], aiEnabled: boolean): GameS
   // Init rows: STRICT RULE - 3 distinct species per row
   for (let i = 0; i < ROW_COUNT; i++) {
       const currentRow: BirdType[] = [];
-      
       while (currentRow.length < INITIAL_ROW_CARDS) {
           const card = drawCard(initialState);
           if (!card) break; 
 
-          // If duplicate in THIS row, discard and retry
           if (currentRow.includes(card)) {
               initialState.discardPile.push(card);
           } else {
@@ -82,7 +81,6 @@ export const initializeGame = (playerNames: string[], aiEnabled: boolean): GameS
       rows[i] = currentRow;
   }
 
-  // Create Players
   const players: Player[] = playerNames.map((name, index) => ({
     id: index,
     name: name || `Player ${index + 1}`,
@@ -92,9 +90,9 @@ export const initializeGame = (playerNames: string[], aiEnabled: boolean): GameS
   }));
   
   initialState.players = players;
-  dealHands(initialState); // Deal 8 cards each
+  dealHands(initialState);
 
-  // Initial Collection (1 free bird each)
+  // Initial Collection
   initialState.players.forEach(p => {
       const startBird = drawCard(initialState);
       if (startBird) {
@@ -106,7 +104,6 @@ export const initializeGame = (playerNames: string[], aiEnabled: boolean): GameS
 };
 
 // Official Rule: End of turn refill.
-// If a row has 0 or 1 species, add cards until 2 distinct species exist.
 const ensureRowValidity = (row: BirdType[], state: GameState) => {
     let safety = 0;
     while (safety < 20) { 
@@ -160,8 +157,7 @@ const handleRoundEnd = (state: GameState, finisherIndex: number) => {
     // Deal new hands
     dealHands(state);
 
-    // Finisher starts new round? Rules say: "The player to the left of the one who ended the round becomes the new first player."
-    // For 2 players, that means the OTHER player starts.
+    // The player to the LEFT of the finisher starts the new round.
     state.currentPlayerIndex = (finisherIndex + 1) % state.players.length;
     state.turnPhase = TurnPhase.PLAY;
 };
@@ -182,29 +178,35 @@ export const applyMove = (state: GameState, move: GameMove): MoveOutcome => {
 
   if (!player) return outcome;
 
-  // --- DRAW DECISION MOVES ---
+  // --- DRAW CARDS (Optional Action) ---
   if (move.type === MoveType.DRAW_CARDS) {
       if (newState.turnPhase !== TurnPhase.DRAW_DECISION) return outcome;
+      
       let drawnCount = 0;
       const c1 = drawCard(newState);
       if(c1) { player.hand.push(c1); drawnCount++; }
       const c2 = drawCard(newState);
       if(c2) { player.hand.push(c2); drawnCount++; }
       player.hand.sort();
-      
+
       outcome.drawn = drawnCount;
-      outcome.message = `${player.name} drew ${drawnCount} cards.`;
+      outcome.message = `${player.name} chose to draw ${drawnCount} cards.`;
       
+      // Drawing ends the "play" part, move to Flock/Pass
       newState.turnPhase = TurnPhase.FLOCK_OR_PASS;
       newState.lastActionLog.push(outcome.message);
       outcome.isValid = true;
       return outcome;
   }
 
+  // --- SKIP DRAW (Optional Action) ---
   if (move.type === MoveType.SKIP_DRAW) {
       if (newState.turnPhase !== TurnPhase.DRAW_DECISION) return outcome;
+      
       outcome.message = `${player.name} skipped drawing.`;
       
+      // Rule: If you skip draw AND your hand is empty, Round Ends immediately.
+      // And the triggerer ends their turn (passed to next in handleRoundEnd)
       if (player.hand.length === 0) {
           handleRoundEnd(newState, player.id);
       } else {
@@ -218,6 +220,8 @@ export const applyMove = (state: GameState, move: GameMove): MoveOutcome => {
   // --- PASS ---
   if (move.type === MoveType.PASS) {
       if (newState.turnPhase !== TurnPhase.FLOCK_OR_PASS) return outcome;
+      
+      // Standard check if hand became empty after flocking (should be caught in flock, but safe here)
       if (player.hand.length === 0) {
           handleRoundEnd(newState, player.id);
       } else {
@@ -261,17 +265,19 @@ export const applyMove = (state: GameState, move: GameMove): MoveOutcome => {
       return outcome;
     }
 
+    // After flocking, if hand is empty -> Round Ends
     if (player.hand.length === 0) {
          handleRoundEnd(newState, player.id);
     } else {
+        // Otherwise, turn ends immediately (Max 1 flock per turn)
         newState.currentPlayerIndex = (newState.currentPlayerIndex + 1) % newState.players.length;
         newState.turnPhase = TurnPhase.PLAY;
-        newState.lastActionLog.push(`${player.name} ended turn (auto).`);
+        newState.lastActionLog.push(`${player.name} ended turn.`);
     }
     return outcome;
   } 
   
-  // --- PLAY (Core Mechanics) ---
+  // --- PLAY ---
   if (move.type === MoveType.PLAY) {
     if (newState.turnPhase !== TurnPhase.PLAY) return outcome;
     if (move.rowIndex === undefined || move.side === undefined || !move.birdType) return outcome;
@@ -290,30 +296,22 @@ export const applyMove = (state: GameState, move: GameMove): MoveOutcome => {
       row.push(...cardsToPlay);
     }
 
-    // 3. CAPTURE LOGIC (FIXED)
+    // 3. CAPTURE LOGIC
     let captured: BirdType[] = [];
     
     if (move.side === 'LEFT') {
-      // Cards added at 0..N-1.
-      // Scan from N onwards for the FIRST matching species.
       const searchStartIndex = cardsToPlay.length;
       const matchIndex = row.slice(searchStartIndex).findIndex(b => b === move.birdType);
       
       if (matchIndex !== -1) {
           const absoluteMatchIndex = searchStartIndex + matchIndex;
-          // Capture EVERYTHING between the new cards and the matching card
           const deleteCount = absoluteMatchIndex - searchStartIndex;
-          
           if (deleteCount > 0) {
               captured = row.splice(searchStartIndex, deleteCount);
           }
       }
     } else {
-      // SIDE === 'RIGHT'
-      // Cards added at End.
-      // Scan backwards from End-N-1 for the LAST matching species.
       const originalLen = row.length - cardsToPlay.length;
-      
       let matchIndex = -1;
       for (let i = originalLen - 1; i >= 0; i--) {
           if (row[i] === move.birdType) {
@@ -321,12 +319,9 @@ export const applyMove = (state: GameState, move: GameMove): MoveOutcome => {
               break;
           }
       }
-
       if (matchIndex !== -1) {
-          // Capture EVERYTHING between matching card and new cards
           const startIndex = matchIndex + 1;
           const deleteCount = originalLen - startIndex;
-          
           if (deleteCount > 0) {
               captured = row.splice(startIndex, deleteCount);
           }
@@ -338,16 +333,19 @@ export const applyMove = (state: GameState, move: GameMove): MoveOutcome => {
       player.hand.sort();
       outcome.captured = captured;
       outcome.message = `${player.name} played ${move.birdType}, captured ${captured.length}.`;
+      
+      // Capture successful -> Go to Flock/Pass
       newState.turnPhase = TurnPhase.FLOCK_OR_PASS;
     } else {
-      // NO CAPTURE -> GO TO DRAW DECISION
+      // NO CAPTURE -> DRAW DECISION (Optional Draw)
       outcome.message = `${player.name} played ${move.birdType}, no capture.`;
-      newState.turnPhase = TurnPhase.DRAW_DECISION; 
+      newState.turnPhase = TurnPhase.DRAW_DECISION;
     }
 
+    // Refill row
     ensureRowValidity(row, newState);
+
     newState.lastActionLog.push(outcome.message);
-    
     outcome.isValid = true;
     return outcome;
   }

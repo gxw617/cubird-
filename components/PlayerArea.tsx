@@ -1,3 +1,4 @@
+
 import React, { useMemo } from 'react';
 import { Player, BirdType, TurnPhase } from '../types';
 import { Card } from './Card';
@@ -41,7 +42,6 @@ export const PlayerArea: React.FC<PlayerAreaProps> = ({
   }, [selectedBird, groupedHand]);
 
   const isPlayPhase = phase === TurnPhase.PLAY;
-  const isFlockPhase = phase === TurnPhase.FLOCK_OR_PASS;
   const isDrawDecision = phase === TurnPhase.DRAW_DECISION;
 
   return (
@@ -52,7 +52,7 @@ export const PlayerArea: React.FC<PlayerAreaProps> = ({
     `}>
       <div className="max-w-7xl mx-auto px-2 md:px-4 flex flex-col md:flex-row items-center md:items-end justify-between gap-2 md:gap-4">
         
-        <div className="flex flex-row md:flex-col items-center md:items-start justify-between w-full md:w-auto md:min-w-[120px] pt-2 md:pt-0 px-2 md:px-0">
+        <div className="flex flex-row md:flex-col items-center md:items-start justify-between w-full md:w-auto md:min-w-[120px] pt-1 md:pt-0 px-2 md:px-0">
           <h3 className={`font-bold text-sm md:text-lg transition-colors ${isCurrentTurn ? 'text-emerald-600' : 'text-stone-400'}`}>
             {isCurrentTurn 
                 ? (isDrawDecision ? "Draw Cards?" : isPlayPhase ? "Play a Card" : "Flock or Pass") 
@@ -76,7 +76,7 @@ export const PlayerArea: React.FC<PlayerAreaProps> = ({
                     const isFlocking = flockingBirdType === type;
                     const canThisBirdFlock = count >= BIRD_DATA[type].smallFlock;
                     const stackDepth = Math.min(count - 1, 2); 
-                    const isDisabled = !isCurrentTurn || isDrawDecision; // Disable selection during Draw Decision
+                    const isDisabled = !isCurrentTurn || isDrawDecision;
 
                     return (
                         <div key={type} className={`
@@ -91,10 +91,10 @@ export const PlayerArea: React.FC<PlayerAreaProps> = ({
                             {!isFlocking && (
                                 <div className={`absolute -top-4 -right-2 md:-top-4 md:-right-3 text-[10px] md:text-xs font-black w-6 h-6 md:w-7 md:h-7 rounded-full flex items-center justify-center z-[50] border-[2px] md:border-[3px] shadow-sm transition-colors ${isSelected ? 'bg-yellow-400 text-yellow-900 border-white' : 'bg-stone-800 text-white border-white'}`}>{count}</div>
                             )}
-                            {isFlockPhase && canThisBirdFlock && !isSelected && !isDisabled && <div className="absolute -bottom-2 left-1/2 -translate-x-1/2 w-2 h-2 bg-emerald-500 rounded-full animate-ping z-[60]"></div>}
+                            {phase === TurnPhase.FLOCK_OR_PASS && canThisBirdFlock && !isSelected && !isDisabled && <div className="absolute -bottom-2 left-1/2 -translate-x-1/2 w-2 h-2 bg-emerald-500 rounded-full animate-ping z-[60]"></div>}
                             <div className={`relative z-30 ${isDisabled ? 'pointer-events-none grayscale-[0.3]' : ''}`}>
                                 <Card 
-                                    type={type} selected={isSelected} isDimmed={!isDisabled && isFlockPhase && isSelected && !canCurrentSelectionFlock} isFlying={isFlocking}
+                                    type={type} selected={isSelected} isDimmed={!isDisabled && phase === TurnPhase.FLOCK_OR_PASS && isSelected && !canCurrentSelectionFlock} isFlying={isFlocking}
                                     onClick={() => !isDisabled && onSelectBird(isSelected ? null : type)}
                                     onDragStart={(e) => { if (!isDisabled && isPlayPhase) onSelectBird(type); else e.preventDefault(); }}
                                 />
@@ -108,7 +108,7 @@ export const PlayerArea: React.FC<PlayerAreaProps> = ({
 
         {/* Actions */}
         <div className="flex flex-row md:flex-col gap-2 w-full md:w-auto md:min-w-[160px] pb-2 md:pb-4 px-4 md:px-0">
-             {isCurrentTurn && isFlockPhase ? (
+             {isCurrentTurn && phase === TurnPhase.FLOCK_OR_PASS ? (
                  <div className="flex flex-row md:flex-col gap-2 w-full">
                      <button onClick={onFlock} disabled={!canCurrentSelectionFlock || isHidden} className={`flex-1 md:w-full px-4 py-3 rounded-xl font-bold shadow-sm transition-all flex items-center justify-center text-xs md:text-sm ${canCurrentSelectionFlock && !isHidden ? 'bg-stone-800 text-white hover:bg-black active:scale-95 shadow-md' : 'bg-stone-200 text-stone-400 cursor-not-allowed border border-stone-300'} ${hasAnyFlockable && !canCurrentSelectionFlock && !isHidden ? 'animate-heartbeat ring-2 ring-emerald-400 ring-offset-2' : ''}`}>
                         {canCurrentSelectionFlock ? `FLOCK (+${groupedHand[selectedBird!]! >= BIRD_DATA[selectedBird!].bigFlock ? 2 : 1})` : hasAnyFlockable ? "Select Set" : "No Flocks"}
