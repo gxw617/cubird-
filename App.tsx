@@ -258,8 +258,6 @@ const App: React.FC = () => {
         : (!gameState.players[gameState.currentPlayerIndex].isAi)) 
     : false;
 
-  const showDrawModal = isHumanTurn && gameState?.turnPhase === TurnPhase.DRAW_DECISION;
-
   // --- TIMER LOGIC ---
   useEffect(() => {
     if (timerRef.current) clearInterval(timerRef.current);
@@ -406,6 +404,8 @@ const App: React.FC = () => {
       </div>
     );
   }
+
+  const showDrawModal = isHumanTurn && gameState?.turnPhase === TurnPhase.DRAW_DECISION;
 
   return (
     <div className="min-h-screen bg-stone-50 pb-[300px] flex flex-col md:flex-row">

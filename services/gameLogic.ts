@@ -64,14 +64,31 @@ export const initializeGame = (playerNames: string[], aiEnabled: boolean): GameS
     isAiThinking: false,
   };
 
-  // Init rows ensuring validity
+  // Init rows: 4 rows, 3 cards each. 
+  // STRICT RULE: Each row must have 3 DIFFERENT species. 
+  // Linear check method: Draw 1 -> Check duplicate -> Add or Discard.
   for (let i = 0; i < ROW_COUNT; i++) {
-      for (let j = 0; j < INITIAL_ROW_CARDS; j++) {
-        const card = drawCard(initialState);
-        if(card) rows[i].push(card);
+      const currentRow: BirdType[] = [];
+      
+      while (currentRow.length < INITIAL_ROW_CARDS) {
+          const card = drawCard(initialState);
+          
+          if (!card) {
+              // Should not happen at start of game unless deck size is tiny
+              break; 
+          }
+
+          // Check if this bird species is already in this specific row
+          if (currentRow.includes(card)) {
+              // Duplicate found! Rule: Discard it immediately.
+              initialState.discardPile.push(card);
+              // Loop continues to try and fill this slot again
+          } else {
+              // New species for this row, accept it.
+              currentRow.push(card);
+          }
       }
-      // Ensure row has at least 2 distinct species at start
-      ensureRowValidity(rows[i], initialState);
+      rows[i] = currentRow;
   }
 
   const players: Player[] = playerNames.map((name, index) => ({
@@ -123,14 +140,15 @@ export const checkWinCondition = (player: Player): boolean => {
   return speciesWithThreeOrMore >= 2;
 };
 
-// Helper: Count how many flockable sets a player has
 export const getFlockableCount = (player: Player): number => {
     if (!player || !player.hand) return 0;
-    const counts = player.hand.reduce((acc, b) => { acc[b]=(acc[b]||0)+1; return acc; }, {} as Record<string, number>);
+    const counts: Record<string, number> = {};
+    player.hand.forEach(b => counts[b] = (counts[b] || 0) + 1);
+    
     let options = 0;
-    Object.keys(counts).forEach(key => {
+    Object.entries(counts).forEach(([key, count]) => {
         const type = key as BirdType;
-        if (counts[type]! >= BIRD_DATA[type].smallFlock) options++;
+        if (BIRD_DATA[type] && count >= BIRD_DATA[type].smallFlock) options++;
     });
     return options;
 };
