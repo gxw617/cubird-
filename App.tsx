@@ -21,11 +21,11 @@ const App: React.FC = () => {
   const [onlineMenuState, setOnlineMenuState] = useState<'NONE' | 'CREATE' | 'JOIN'>('NONE');
   const [roomCode, setRoomCode] = useState<string>('');
   const [joinCodeInput, setJoinCodeInput] = useState<string>('');
+  const [playerNameInput, setPlayerNameInput] = useState<string>('');
   const [isOnlineGame, setIsOnlineGame] = useState(false);
   const [myPlayerId, setMyPlayerId] = useState<number>(0); 
   const [onlineStatus, setOnlineStatus] = useState<string>('');
 
-  // Auto-pass timer state
   const [countdown, setCountdown] = useState<number | null>(null);
   const [timerDuration, setTimerDuration] = useState<number>(10);
   const timerRef = useRef<number | null>(null);
@@ -38,77 +38,40 @@ const App: React.FC = () => {
     initGemini();
   }, []);
 
-  // --- HELPER: Fix Firebase Empty Arrays/Objects ---
   const sanitizeGameState = useCallback((state: any): GameState => {
       if (!state) return state;
-      
-      const asArray = (val: any) => {
-          if (!val) return [];
-          if (Array.isArray(val)) return val;
-          return Object.values(val);
-      };
+      const asArray = (val: any) => val ? (Array.isArray(val) ? val : Object.values(val)) : [];
 
-      // 1. Restore Winner State (CRITICAL FIX for "Winner Wins!" bug)
-      // Firebase drops keys with null values. If winner is undefined, it means null (no winner yet).
-      if (state.winner === undefined) {
-          state.winner = null;
-      }
-
-      // 2. Top Level Arrays
+      if (state.winner === undefined) state.winner = null;
       state.deck = asArray(state.deck);
       state.discardPile = asArray(state.discardPile);
       state.lastActionLog = asArray(state.lastActionLog);
       
-      // 3. Rows: CRITICAL FIX for Sparse Arrays
       const denseRows: BirdType[][] = [[], [], [], []];
       if (state.rows) {
           const source = state.rows;
-          // Whether source is Array or Object, iterating 0..3 works for both accessing by key/index
-          for(let i=0; i<4; i++) {
-              if (source[i]) {
-                  denseRows[i] = asArray(source[i]);
-              }
-          }
+          for(let i=0; i<4; i++) if (source[i]) denseRows[i] = asArray(source[i]);
       }
       state.rows = denseRows;
 
-      // 4. Players: CRITICAL FIX for "undefined reading name"
-      // We explicitly rebuild the players array to ensure indices 0 and 1 exist.
       const densePlayers: any[] = [];
       const rawPlayers = state.players || [];
-      
       for (let i = 0; i < 2; i++) {
           let p = rawPlayers[i];
-          
-          // If player data is missing, create a safe placeholder
-          if (!p) {
-              p = { 
-                  id: i, 
-                  name: i === 0 ? 'Player 1' : 'Player 2', 
-                  isAi: false, 
-                  hand: [], 
-                  collection: {} 
-              };
-          }
-
-          // Ensure internal arrays exist
+          if (!p) p = { id: i, name: i === 0 ? 'Player 1' : 'Player 2', isAi: false, hand: [], collection: {} };
           p.hand = asArray(p.hand);
           if (!p.collection || typeof p.collection !== 'object') p.collection = {};
-          
           densePlayers[i] = p;
       }
       state.players = densePlayers;
-      
       return state as GameState;
   }, []);
 
-  // --- ONLINE SYNC EFFECT ---
   useEffect(() => {
       if (isOnlineGame && roomCode) {
           const unsubscribe = subscribeToRoom(roomCode, (rawState) => {
               const newState = sanitizeGameState(rawState);
               setGameState(newState);
-              
               if (myPlayerId === 0 && newState.players.length > 1 && newState.players[1].name !== "Waiting...") {
                   if (onlineMenuState === 'CREATE') {
                       setOnlineMenuState('NONE'); 
@@ -127,7 +90,6 @@ const App: React.FC = () => {
     playSound('click');
     const players = ai ? ['You', 'Gemini AI'] : ['Player 1', 'Player 2'];
     const newState = initializeGame(players, ai);
-    
     setGameState(newState);
     setSelectedBird(null);
     setDrawConfirmation(null);
@@ -144,7 +106,8 @@ const App: React.FC = () => {
       setOnlineMenuState('CREATE');
       setOnlineStatus('Creating Room...');
 
-      const newState = initializeGame(['Host (You)', 'Opponent (Waiting)'], false);
+      const hostName = playerNameInput || 'Host';
+      const newState = initializeGame([hostName, 'Opponent (Waiting)'], false);
       newState.players[1].name = "Waiting...";
       
       setGameState(newState); 
@@ -169,13 +132,8 @@ const App: React.FC = () => {
       if (result.success && result.gameState) {
           const newState = sanitizeGameState(result.gameState);
           
-          if (newState.players[1]) {
-             newState.players[1].name = "Joiner (You)";
-          }
-          if (newState.players[0]) {
-             newState.players[0].name = "Host";
-          }
-          newState.lastActionLog.push("Opponent joined the game!");
+          if (newState.players[1]) newState.players[1].name = playerNameInput || "Joiner";
+          newState.lastActionLog.push(`${playerNameInput || "Opponent"} joined the game!`);
           
           await updateGameState(joinCodeInput, newState);
           
@@ -191,8 +149,8 @@ const App: React.FC = () => {
       }
   };
 
-  const handleCreateRoomClick = () => startOnlineHost();
-  const handleJoinRoomClick = () => { playSound('click'); setOnlineMenuState('JOIN'); setJoinCodeInput(''); setOnlineStatus(''); };
+  const handleCreateRoomClick = () => { setPlayerNameInput(''); setOnlineMenuState('CREATE'); }; 
+  const handleJoinRoomClick = () => { playSound('click'); setOnlineMenuState('JOIN'); setJoinCodeInput(''); setOnlineStatus(''); setPlayerNameInput(''); };
 
   const quitGame = () => {
     setGameState(null);
@@ -207,15 +165,12 @@ const App: React.FC = () => {
 
   const syncMove = (newState: GameState) => {
       setGameState(newState);
-      if (isOnlineGame && roomCode) {
-          updateGameState(roomCode, newState);
-      }
+      if (isOnlineGame && roomCode) updateGameState(roomCode, newState);
   };
 
   const handlePass = useCallback(() => {
       if (!gameState) return;
       if (isOnlineGame && gameState.currentPlayerIndex !== myPlayerId) return;
-
       playSound('click');
       const outcome = applyMove(gameState, { type: MoveType.PASS });
       syncMove(outcome.newState);
@@ -233,29 +188,34 @@ const App: React.FC = () => {
         
         setGameState(prev => {
             if (!prev) return null;
-            let moveResult: MoveOutcome;
-            
-            if (aiMove) {
-                moveResult = applyMove(prev, {
-                    type: aiMove.moveType,
-                    birdType: aiMove.birdType,
-                    rowIndex: aiMove.rowIndex,
-                    side: aiMove.side
-                });
-            } else {
-                 const randomBird = currentPlayer.hand[0]; 
-                 moveResult = applyMove(prev, {
-                    type: MoveType.PLAY,
-                    birdType: randomBird || BirdType.PARROT,
-                    rowIndex: Math.floor(Math.random() * 4),
-                    side: 'LEFT'
-                });
-            }
+            const randomBird = currentPlayer.hand[0]; 
+            const moveResult = applyMove(prev, aiMove ? {
+                type: aiMove.moveType,
+                birdType: aiMove.birdType,
+                rowIndex: aiMove.rowIndex,
+                side: aiMove.side
+            } : {
+                type: MoveType.PLAY,
+                birdType: randomBird || BirdType.PARROT,
+                rowIndex: Math.floor(Math.random() * 4),
+                side: 'LEFT'
+            });
+
             if (moveResult.captured.length > 0) playSound('capture');
             else if (moveResult.drawn > 0) playSound('draw');
             else playSound('pop');
+
             return { ...moveResult.newState, isAiThinking: false };
         });
+    } else if (currentState.turnPhase === TurnPhase.DRAW_DECISION) {
+        // AI Logic for Draw Decision: Always Draw for now (simple)
+        setTimeout(() => {
+            setGameState(prev => {
+                if(!prev) return null;
+                const outcome = applyMove(prev, { type: MoveType.DRAW_CARDS });
+                return outcome.newState;
+            });
+        }, 1000);
     } else if (currentState.turnPhase === TurnPhase.FLOCK_OR_PASS) {
         setTimeout(() => {
             setGameState(prev => {
@@ -282,44 +242,24 @@ const App: React.FC = () => {
   useEffect(() => {
     if (gameState && gameState.status === 'PLAYING') {
       const currentPlayer = gameState.players[gameState.currentPlayerIndex];
-      if (currentPlayer.isAi && !gameState.isAiThinking) {
-        executeAiTurn(gameState);
-      }
+      if (currentPlayer.isAi && !gameState.isAiThinking) executeAiTurn(gameState);
     }
   }, [gameState, executeAiTurn]);
 
-  const currentPlayer = gameState ? gameState.players[gameState.currentPlayerIndex] : null;
-  const isHumanTurn = gameState 
-    ? (isOnlineGame 
-        ? gameState.currentPlayerIndex === myPlayerId 
-        : (!currentPlayer?.isAi && !gameState.isAiThinking)) 
-    : false;
-  
+  // Determine whose hand to show at the bottom
+  // LOCAL: Always Human (Player 0) or current player if hotseat
+  // ONLINE: Always My ID
   const humanPlayer = gameState 
     ? (isOnlineGame 
         ? gameState.players[myPlayerId] 
         : (gameState.players.find(p => !p.isAi) || gameState.players[0]))
     : null;
 
-  useEffect(() => {
-    if (timerRef.current) clearInterval(timerRef.current);
-    if (isHumanTurn && gameState?.turnPhase === TurnPhase.FLOCK_OR_PASS) {
-        setCountdown(timerDuration);
-        timerRef.current = window.setInterval(() => {
-            setCountdown(prev => {
-                if (prev !== null && prev <= 1) {
-                    clearInterval(timerRef.current!);
-                    handlePass();
-                    return 0;
-                }
-                return (prev || 0) - 1;
-            });
-        }, 1000);
-    } else {
-        setCountdown(null);
-    }
-    return () => { if (timerRef.current) clearInterval(timerRef.current); };
-  }, [gameState?.turnPhase, isHumanTurn, handlePass, timerDuration]);
+  const isHumanTurn = gameState 
+    ? (isOnlineGame 
+        ? gameState.currentPlayerIndex === myPlayerId 
+        : (!gameState.players[gameState.currentPlayerIndex].isAi)) 
+    : false;
 
   const handleSelectSide = (rowIndex: number, side: 'LEFT' | 'RIGHT') => {
     if (!gameState || !selectedBird || gameState.turnPhase !== TurnPhase.PLAY) return;
@@ -328,39 +268,25 @@ const App: React.FC = () => {
     const move: GameMove = { type: MoveType.PLAY, birdType: selectedBird, rowIndex, side };
     const outcome = applyMove(gameState, move);
 
-    if (outcome.captured.length > 0) {
-        playSound('capture');
-        syncMove(outcome.newState);
-        setSelectedBird(null);
-    } else if (outcome.drawn > 0) {
-        playSound('pop');
-        setDrawConfirmation({ outcome });
-    } else {
-        syncMove(outcome.newState);
-        setSelectedBird(null);
-    }
+    if (outcome.captured.length > 0) playSound('capture');
+    else if (outcome.drawn > 0) playSound('pop'); // Just sound, modal handles phase
+    else playSound('pop');
+
+    syncMove(outcome.newState);
+    setSelectedBird(null);
   };
 
   const confirmDraw = () => {
-      if (!drawConfirmation) return;
+      if (!gameState) return;
       playSound('draw');
-      syncMove(drawConfirmation.outcome.newState);
-      setDrawConfirmation(null);
-      setSelectedBird(null);
+      const outcome = applyMove(gameState, { type: MoveType.DRAW_CARDS });
+      syncMove(outcome.newState);
   };
 
   const skipDraw = () => {
-    if (!drawConfirmation) return;
-    const modifiedState = JSON.parse(JSON.stringify(drawConfirmation.outcome.newState)) as GameState;
-    const player = modifiedState.players[modifiedState.currentPlayerIndex];
-    if (drawConfirmation.outcome.drawn === 2) {
-        player.hand.pop();
-        player.hand.pop();
-        modifiedState.lastActionLog.push("...skipped drawing.");
-    }
-    syncMove(modifiedState);
-    setDrawConfirmation(null);
-    setSelectedBird(null);
+    if (!gameState) return;
+    const outcome = applyMove(gameState, { type: MoveType.SKIP_DRAW });
+    syncMove(outcome.newState);
   };
 
   const handleFlock = () => {
@@ -380,18 +306,38 @@ const App: React.FC = () => {
   if (!gameState || onlineMenuState !== 'NONE') {
     return (
       <div className="min-h-screen flex flex-col items-center justify-center bg-stone-100 p-4 font-sans text-stone-800">
-        <h1 className="text-8xl font-black text-transparent bg-clip-text bg-gradient-to-br from-teal-500 to-indigo-600 mb-2 drop-shadow-sm tracking-tighter">CUBIRDS</h1>
-        <p className="text-stone-500 mb-12 font-medium text-xl">The strategic card game of bird collection.</p>
+        <h1 className="text-6xl md:text-8xl font-black text-transparent bg-clip-text bg-gradient-to-br from-teal-500 to-indigo-600 mb-2 drop-shadow-sm tracking-tighter">CUBIRDS</h1>
+        <p className="text-stone-500 mb-8 md:mb-12 font-medium text-lg md:text-xl">The strategic card game of bird collection.</p>
 
         {onlineMenuState === 'NONE' && (
             <div className="bg-white p-8 rounded-3xl shadow-2xl max-w-md w-full border-4 border-white ring-1 ring-stone-200 animate-bounce-in">
                 <button onClick={() => startGame(false)} className="w-full bg-stone-800 hover:bg-stone-900 text-white font-bold py-5 rounded-2xl mb-4 transition-all shadow-md hover:-translate-y-1 flex items-center justify-center gap-3 text-lg"><span className="text-2xl">👥</span> Pass & Play</button>
                 <button onClick={() => startGame(true)} className="w-full bg-gradient-to-r from-blue-500 to-indigo-600 hover:from-blue-600 hover:to-indigo-700 text-white font-bold py-5 rounded-2xl mb-4 transition-all shadow-md hover:-translate-y-1 flex items-center justify-center gap-3 text-lg"><span className="text-2xl">✨</span> Play vs AI</button>
-                <button onClick={handleCreateRoomClick} className="w-full bg-white border-2 border-stone-200 text-stone-600 hover:bg-stone-50 font-bold py-4 rounded-2xl transition-all hover:-translate-y-1 flex items-center justify-center gap-3"><span className="text-xl">🌐</span> Create Online Room</button>
-                 <button onClick={handleJoinRoomClick} className="w-full mt-2 text-stone-400 font-bold hover:text-stone-600 hover:underline text-sm">Join Existing Room</button>
+                <div className="flex flex-col gap-2">
+                    <input 
+                        type="text" 
+                        placeholder="Your Name (Optional)" 
+                        value={playerNameInput}
+                        onChange={(e) => setPlayerNameInput(e.target.value)}
+                        className="w-full px-4 py-3 rounded-xl border-2 border-stone-200 text-center font-bold text-stone-600 focus:border-indigo-400 outline-none"
+                    />
+                    <button onClick={() => { if(playerNameInput.trim()) startOnlineHost(); else alert('Please enter a name first'); }} className="w-full bg-white border-2 border-stone-200 text-stone-600 hover:bg-stone-50 font-bold py-4 rounded-2xl transition-all hover:-translate-y-1 flex items-center justify-center gap-3"><span className="text-xl">🌐</span> Create Online Room</button>
+                    <button onClick={handleJoinRoomClick} className="w-full mt-2 text-stone-400 font-bold hover:text-stone-600 hover:underline text-sm">Join Existing Room</button>
+                </div>
             </div>
         )}
 
+        {onlineMenuState === 'JOIN' && (
+             <div className="bg-white p-8 rounded-3xl shadow-2xl max-w-md w-full border-4 border-white animate-bounce-in text-center">
+                 <h2 className="text-2xl font-bold text-stone-800 mb-6">Join Room</h2>
+                 <input type="text" value={playerNameInput} onChange={(e) => setPlayerNameInput(e.target.value)} placeholder="Your Name" className="w-full bg-stone-50 text-center text-lg font-bold text-stone-700 p-3 rounded-xl mb-4 outline-none border-2 border-transparent focus:border-indigo-400" />
+                 <input type="text" value={joinCodeInput} onChange={(e) => setJoinCodeInput(e.target.value.replace(/\D/g,'').slice(0,4))} placeholder="Enter 4-Digit Code" maxLength={4} inputMode="numeric" className="w-full bg-stone-100 text-center text-3xl font-black text-indigo-600 p-4 rounded-xl mb-6 outline-none border-2 border-transparent focus:border-indigo-400 transition-all placeholder:text-stone-300" />
+                 {onlineStatus && <p className="text-indigo-400 text-sm mb-4 font-bold">{onlineStatus}</p>}
+                 <button onClick={joinOnlineGame} disabled={joinCodeInput.length !== 4 || !playerNameInput.trim()} className="w-full bg-indigo-500 hover:bg-indigo-600 disabled:bg-stone-200 disabled:text-stone-400 text-white font-bold py-4 rounded-2xl mb-4 transition-all">Join Game</button>
+                 <button onClick={() => { setOnlineMenuState('NONE'); setOnlineStatus(''); }} className="w-full py-2 text-stone-400 font-bold hover:text-stone-600">Back</button>
+             </div>
+        )}
+        
         {onlineMenuState === 'CREATE' && (
              <div className="bg-white p-8 rounded-3xl shadow-2xl max-w-md w-full border-4 border-white animate-bounce-in text-center">
                  <h2 className="text-2xl font-bold text-stone-800 mb-4">Room Created</h2>
@@ -401,35 +347,24 @@ const App: React.FC = () => {
                  </div>
                  <div className="flex items-center justify-center gap-2 mb-8 text-stone-400 animate-pulse">
                      <span className="w-2 h-2 bg-stone-400 rounded-full"></span><span className="w-2 h-2 bg-stone-400 rounded-full"></span><span className="w-2 h-2 bg-stone-400 rounded-full"></span>
-                     <span>Waiting for opponent to join...</span>
+                     <span>Waiting for opponent...</span>
                  </div>
-                 {onlineStatus && <p className="text-indigo-500 text-xs mb-4 font-bold">{onlineStatus}</p>}
                  <button onClick={() => { setOnlineMenuState('NONE'); setIsOnlineGame(false); setRoomCode(''); setGameState(null); }} className="w-full py-3 text-stone-400 font-bold hover:text-stone-600">Cancel</button>
              </div>
         )}
-
-        {onlineMenuState === 'JOIN' && (
-             <div className="bg-white p-8 rounded-3xl shadow-2xl max-w-md w-full border-4 border-white animate-bounce-in text-center">
-                 <h2 className="text-2xl font-bold text-stone-800 mb-6">Join Room</h2>
-                 <input type="text" value={joinCodeInput} onChange={(e) => setJoinCodeInput(e.target.value.replace(/\D/g,'').slice(0,4))} placeholder="Enter 4-Digit Code" maxLength={4} inputMode="numeric" className="w-full bg-stone-100 text-center text-3xl font-black text-indigo-600 p-4 rounded-xl mb-6 outline-none border-2 border-transparent focus:border-indigo-400 transition-all placeholder:text-stone-300" />
-                 {onlineStatus && <p className="text-indigo-400 text-sm mb-4 font-bold">{onlineStatus}</p>}
-                 <button onClick={joinOnlineGame} disabled={joinCodeInput.length !== 4} className="w-full bg-indigo-500 hover:bg-indigo-600 disabled:bg-stone-200 disabled:text-stone-400 text-white font-bold py-4 rounded-2xl mb-4 transition-all">Join Game</button>
-                 <button onClick={() => { setOnlineMenuState('NONE'); setOnlineStatus(''); }} className="w-full py-2 text-stone-400 font-bold hover:text-stone-600">Back</button>
-             </div>
-        )}
-        
-        <button onClick={() => setShowRules(true)} className="mt-8 text-stone-400 font-bold hover:text-stone-600 hover:underline">How to Play?</button>
       </div>
     );
   }
 
+  const showDrawModal = gameState && gameState.turnPhase === TurnPhase.DRAW_DECISION && isHumanTurn;
+
   return (
-    <div className="min-h-screen bg-stone-50 pb-[340px] flex flex-col md:flex-row">
+    <div className="min-h-screen bg-stone-50 pb-[300px] flex flex-col md:flex-row">
       <header className="md:hidden bg-white/90 backdrop-blur-md shadow-sm sticky top-0 z-40 px-4 py-3 flex justify-between items-center border-b border-stone-200">
          <div className="flex items-center gap-3"><button onClick={() => setShowQuitConfirm(true)} className="text-stone-400 hover:text-red-500 font-bold text-sm bg-stone-100 px-3 py-1 rounded-lg">← Exit</button><div className="font-black text-xl text-stone-700 tracking-tighter">CUBIRDS</div></div>
          <button onClick={() => setShowGuideMobile(true)} className="text-xs font-bold bg-blue-100 text-blue-700 px-3 py-1.5 rounded-full">Rules ℹ️</button>
       </header>
-      <main className="flex-1 flex flex-col items-center pt-4 md:pt-8 px-2 overflow-x-hidden w-full relative">
+      <main className="flex-1 flex flex-col items-center pt-2 md:pt-8 px-2 overflow-x-hidden w-full relative">
         <div className="hidden md:flex w-full max-w-5xl justify-between items-center mb-6 px-4">
              <div className="flex items-center gap-4"><button onClick={() => setShowQuitConfirm(true)} className="text-stone-400 hover:text-red-500 font-bold px-4 py-2 rounded-xl bg-white border border-stone-200 hover:bg-red-50 hover:border-red-200 transition-colors">← Quit Game</button><div className="font-black text-3xl text-stone-300 tracking-tighter">CUBIRDS</div></div>
              {isOnlineGame && (<div className="flex items-center gap-2 bg-indigo-50 px-4 py-2 rounded-full border border-indigo-100"><span className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></span><span className="text-indigo-600 font-bold text-sm">Room: {roomCode}</span></div>)}
@@ -437,20 +372,20 @@ const App: React.FC = () => {
              <div className="text-sm font-medium text-stone-400 bg-white px-3 py-1 rounded-full border border-stone-200 shadow-sm">Deck: {gameState.deck.length} | Round: {Math.ceil(gameState.lastActionLog.filter(l => l.includes('Round')).length)}</div>
         </div>
         <Collection players={gameState.players} currentPlayerId={gameState.currentPlayerIndex} />
-        {!drawConfirmation && (<div className="w-full max-w-4xl text-center mb-4 h-8 flex items-center justify-center"><span className="inline-block bg-white border border-stone-200 text-stone-500 px-4 py-1.5 rounded-full text-xs font-medium shadow-sm transition-opacity duration-300">{gameState.lastActionLog[gameState.lastActionLog.length - 1]}</span></div>)}
-        <div className="space-y-3 w-full max-w-4xl pb-10">
+        {!showDrawModal && (<div className="w-full max-w-4xl text-center mb-1 md:mb-4 h-6 md:h-8 flex items-center justify-center"><span className="inline-block bg-white border border-stone-200 text-stone-500 px-3 py-1 md:px-4 md:py-1.5 rounded-full text-[10px] md:text-xs font-medium shadow-sm transition-opacity duration-300 truncate max-w-[90%]">{gameState.lastActionLog[gameState.lastActionLog.length - 1]}</span></div>)}
+        <div className="space-y-1 md:space-y-3 w-full max-w-4xl pb-10">
             {gameState.rows.map((row, idx) => (
                 <Row key={idx} index={idx} birds={row} onSelectSide={handleSelectSide} isCurrentPlayerTurn={isHumanTurn && gameState.turnPhase === TurnPhase.PLAY} selectedBird={selectedBird} pendingMove={null} />
             ))}
         </div>
       </main>
 
-      {drawConfirmation && (
+      {showDrawModal && (
          <div className="fixed inset-0 z-[60] flex items-center justify-center bg-stone-900/40 backdrop-blur-sm px-4">
             <div className="bg-white p-6 rounded-3xl shadow-2xl border-4 border-stone-100 w-full max-w-sm animate-bounce-in transform">
                 <h3 className="text-center text-xl font-black text-stone-800 mb-2 uppercase tracking-tight">No Capture!</h3>
-                <div className="bg-orange-50 rounded-xl p-4 mb-6 text-center"><div className="flex flex-col items-center gap-2"><span className="text-3xl font-black text-orange-400">Draw 2 Cards</span><p className="text-xs text-stone-400 mt-2">Or skip if you don't want them.</p></div></div>
-                <div className="flex gap-3"><button onClick={skipDraw} className="flex-1 py-3 rounded-xl font-bold text-stone-500 bg-stone-100 hover:bg-stone-200 transition-colors">Skip</button><button onClick={confirmDraw} className="flex-1 py-3 rounded-xl font-black bg-orange-400 text-white hover:bg-orange-500 shadow-lg hover:translate-y-[-2px] transition-all">CONFIRM</button></div>
+                <div className="bg-orange-50 rounded-xl p-4 mb-6 text-center"><div className="flex flex-col items-center gap-2"><span className="text-3xl font-black text-orange-400">Draw 2 Cards?</span><p className="text-xs text-stone-400 mt-2">If you skip and hand is empty, round ends.</p></div></div>
+                <div className="flex gap-3"><button onClick={skipDraw} className="flex-1 py-3 rounded-xl font-bold text-stone-500 bg-stone-100 hover:bg-stone-200 transition-colors">Skip</button><button onClick={confirmDraw} className="flex-1 py-3 rounded-xl font-black bg-orange-400 text-white hover:bg-orange-500 shadow-lg hover:translate-y-[-2px] transition-all">DRAW</button></div>
             </div>
          </div>
       )}
@@ -476,9 +411,22 @@ const App: React.FC = () => {
       
       {viewBoardMode && (<div className="fixed top-4 right-4 z-[90]"><button onClick={() => setViewBoardMode(false)} className="bg-stone-800 text-white px-6 py-3 rounded-full font-bold shadow-xl animate-bounce">Back to Results 🏆</button></div>)}
 
+      {/* Human Player Area (Always Visible at bottom) */}
       {humanPlayer && (
-        <div className={drawConfirmation || (isOnlineGame && gameState.currentPlayerIndex !== myPlayerId) ? 'pointer-events-none opacity-80 blur-[0.5px] transition-all duration-300' : 'transition-all duration-300'}>
-            <PlayerArea player={humanPlayer} isCurrentTurn={isHumanTurn} phase={gameState.turnPhase} selectedBird={selectedBird} onSelectBird={(b) => { if (isHumanTurn) { playSound('click'); setSelectedBird(b); } }} onFlock={handleFlock} onPass={handlePass} isHidden={false} countdown={countdown} onTimerSet={setTimerDuration} flockingBirdType={flockingBird} />
+        <div className="transition-all duration-300">
+            <PlayerArea 
+                player={humanPlayer} 
+                isCurrentTurn={isHumanTurn} 
+                phase={gameState.turnPhase} 
+                selectedBird={selectedBird} 
+                onSelectBird={(b) => { if (isHumanTurn) { playSound('click'); setSelectedBird(b); } }} 
+                onFlock={handleFlock} 
+                onPass={handlePass} 
+                isHidden={false} 
+                countdown={countdown} 
+                onTimerSet={setTimerDuration} 
+                flockingBirdType={flockingBird} 
+            />
         </div>
       )}
     </div>

@@ -29,6 +29,7 @@ export interface Player {
 
 export enum TurnPhase {
   PLAY = 'PLAY',         // Must play cards
+  DRAW_DECISION = 'DRAW_DECISION', // New: Must decide to Draw or Skip
   FLOCK_OR_PASS = 'FLOCK_OR_PASS' // Can flock or pass turn
 }
 
@@ -48,7 +49,9 @@ export interface GameState {
 export enum MoveType {
   PLAY = 'PLAY',
   FLOCK = 'FLOCK',
-  PASS = 'PASS'
+  PASS = 'PASS',
+  DRAW_CARDS = 'DRAW_CARDS', // New
+  SKIP_DRAW = 'SKIP_DRAW' // New
 }
 
 export interface GameMove {

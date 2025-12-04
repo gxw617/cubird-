@@ -76,7 +76,7 @@ export const initializeGame = (playerNames: string[], aiEnabled: boolean): GameS
 
   const players: Player[] = playerNames.map((name, index) => ({
     id: index,
-    name,
+    name: name || `Player ${index + 1}`, // Fallback
     isAi: aiEnabled && index === 1,
     hand: [],
     collection: {}
@@ -125,7 +125,7 @@ export const checkWinCondition = (player: Player): boolean => {
 
 // Handle end of round (when a player empties hand)
 const handleRoundEnd = (state: GameState, finisherIndex: number) => {
-    state.lastActionLog.push(`🔄 Round Over! ${state.players[finisherIndex].name} emptied their hand.`);
+    state.lastActionLog.push(`🔄 Round Over! ${state.players[finisherIndex].name} emptied hand.`);
     
     // All other players discard their hands
     state.players.forEach((p, idx) => {
@@ -157,10 +157,47 @@ export const applyMove = (state: GameState, move: GameMove): MoveOutcome => {
       isValid: false
   };
 
-  // --- SAFETY CHECK ---
-  // If player data is missing (e.g. sync issue), abort to prevent crash
   if (!player) {
       console.warn("applyMove called but current player is missing");
+      return outcome;
+  }
+
+  // --- DRAW CARDS (Decision Made) ---
+  if (move.type === MoveType.DRAW_CARDS) {
+      if (newState.turnPhase !== TurnPhase.DRAW_DECISION) return outcome;
+      
+      let drawnCount = 0;
+      const c1 = drawCard(newState);
+      if(c1) { player.hand.push(c1); drawnCount++; }
+      const c2 = drawCard(newState);
+      if(c2) { player.hand.push(c2); drawnCount++; }
+      player.hand.sort();
+
+      outcome.drawn = drawnCount;
+      outcome.message = `${player.name} drew ${drawnCount} cards.`;
+      
+      // Proceed to Flock/Pass
+      newState.turnPhase = TurnPhase.FLOCK_OR_PASS;
+      newState.lastActionLog.push(outcome.message);
+      outcome.isValid = true;
+      return outcome;
+  }
+
+  // --- SKIP DRAW (Decision Made) ---
+  if (move.type === MoveType.SKIP_DRAW) {
+      if (newState.turnPhase !== TurnPhase.DRAW_DECISION) return outcome;
+
+      outcome.message = `${player.name} skipped drawing.`;
+      
+      // Check Rule: If Hand Empty and Skipped Draw -> Round End
+      if (player.hand.length === 0) {
+          handleRoundEnd(newState, player.id);
+      } else {
+          newState.turnPhase = TurnPhase.FLOCK_OR_PASS;
+          newState.lastActionLog.push(outcome.message);
+      }
+      
+      outcome.isValid = true;
       return outcome;
   }
 
@@ -168,7 +205,7 @@ export const applyMove = (state: GameState, move: GameMove): MoveOutcome => {
   if (move.type === MoveType.PASS) {
       if (newState.turnPhase !== TurnPhase.FLOCK_OR_PASS) return outcome;
 
-      // Check for round end via empty hand
+      // Check for round end via empty hand (Standard end)
       if (player.hand.length === 0) {
           handleRoundEnd(newState, player.id);
       } else {
@@ -226,7 +263,6 @@ export const applyMove = (state: GameState, move: GameMove): MoveOutcome => {
     if (newState.turnPhase !== TurnPhase.PLAY) return outcome;
     if (move.rowIndex === undefined || move.side === undefined || !move.birdType) return outcome;
 
-    // 1. Place birds
     const cardsToPlay = player.hand.filter(b => b === move.birdType);
     if (cardsToPlay.length === 0) return outcome;
 
@@ -239,7 +275,7 @@ export const applyMove = (state: GameState, move: GameMove): MoveOutcome => {
       row.push(...cardsToPlay);
     }
 
-    // 2. Resolve Capture
+    // Capture Logic
     let captured: BirdType[] = [];
     const containsPlayedType = (birds: BirdType[]) => birds.some(b => b === move.birdType);
 
@@ -276,40 +312,15 @@ export const applyMove = (state: GameState, move: GameMove): MoveOutcome => {
       player.hand.sort();
       outcome.captured = captured;
       outcome.message = `${player.name} played ${move.birdType}, captured ${captured.length}.`;
+      newState.turnPhase = TurnPhase.FLOCK_OR_PASS;
     } else {
-      // 3. No Capture
-      // IMPORTANT: Check if hand is empty. If so, Round Ends Immediately. NO DRAW.
-      if (player.hand.length === 0) {
-          handleRoundEnd(newState, player.id);
-          outcome.message = `${player.name} played last card! Round Over.`;
-          outcome.drawn = 0;
-      } else {
-          // Normal Draw 2
-          let drawnCount = 0;
-          const c1 = drawCard(newState);
-          if(c1) { player.hand.push(c1); drawnCount++; }
-          const c2 = drawCard(newState);
-          if(c2) { player.hand.push(c2); drawnCount++; }
-
-          player.hand.sort();
-          outcome.drawn = drawnCount;
-          outcome.message = `${player.name} played ${move.birdType}, no capture. Drew ${drawnCount}.`;
-      }
+      // NO CAPTURE -> DRAW DECISION
+      outcome.message = `${player.name} played ${move.birdType}, no capture.`;
+      newState.turnPhase = TurnPhase.DRAW_DECISION; 
     }
 
-    // 4. Refill Row
     ensureRowValidity(row, newState);
-
-    newState.turnPhase = TurnPhase.FLOCK_OR_PASS;
     newState.lastActionLog.push(outcome.message);
-    
-    // Check Round End again just in case (though covered above)
-    // If captured cards but still empty? (Impossible, capture adds cards)
-    if (player.hand.length === 0 && outcome.drawn > 0) {
-         // Edge case: Drew 2 cards but somehow hand is empty? Not possible in logic.
-         // Standard check
-         handleRoundEnd(newState, player.id);
-    }
     
     outcome.isValid = true;
     return outcome;
