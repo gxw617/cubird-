@@ -1,18 +1,18 @@
-
 export enum BirdType {
-  PARROT = 'Parrot',
-  OWL = 'Owl',
-  FLAMINGO = 'Flamingo',
-  TOUCAN = 'Toucan',
-  DUCK = 'Duck',
-  MAGPIE = 'Magpie',
-  REED_WARBLER = 'Reed Warbler',
-  ROBIN = 'Robin'
+  SPARROW = 'Sparrow',
+  SWALLOW = 'Swallow',
+  TIT_WARBLER = 'Tit-warbler',
+  MANDARIN_DUCK = 'Mandarin Duck',
+  HOOPOE = 'Hoopoe',
+  KINGFISHER = 'Kingfisher',
+  PEACOCK = 'Peacock',
+  RED_CROWNED_CRANE = 'Red-crowned Crane'
 }
 
 export interface BirdConfig {
   id: BirdType;
-  name: string;
+  name: string; // English name
+  cnName: string; // Chinese name
   total: number;
   smallFlock: number;
   bigFlock: number;
