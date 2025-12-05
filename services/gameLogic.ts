@@ -1,8 +1,6 @@
-
 import { BIRD_DATA, INITIAL_HAND_SIZE, INITIAL_ROW_CARDS, ROW_COUNT } from '../constants';
 import { BirdType, GameState, Player, MoveType, GameMove, MoveOutcome, TurnPhase } from '../types';
 
-// Helper to shuffle array
 export const shuffle = <T,>(array: T[]): T[] => {
   const newArray = [...array];
   for (let i = newArray.length - 1; i > 0; i--) {
@@ -12,7 +10,6 @@ export const shuffle = <T,>(array: T[]): T[] => {
   return newArray;
 };
 
-// Create a new deck
 const createDeck = (): BirdType[] => {
   let deck: BirdType[] = [];
   Object.values(BIRD_DATA).forEach((bird) => {
@@ -23,7 +20,6 @@ const createDeck = (): BirdType[] => {
   return shuffle(deck);
 };
 
-// Helper to draw a card, reshuffling discard if needed
 const drawCard = (state: GameState): BirdType | undefined => {
     if (state.deck.length === 0) {
         if (state.discardPile.length > 0) {
@@ -38,18 +34,13 @@ const drawCard = (state: GameState): BirdType | undefined => {
 };
 
 const dealHands = (state: GameState) => {
-    // Clear hands first
     state.players.forEach(p => p.hand = []);
-    
-    // Deal 8 cards to each player sequentially
     for(let k=0; k<INITIAL_HAND_SIZE; k++) {
         state.players.forEach(p => {
             const card = drawCard(state);
             if(card) p.hand.push(card);
         });
     }
-    
-    // Sort hands
     state.players.forEach(p => p.hand.sort());
 };
 
@@ -70,15 +61,11 @@ export const initializeGame = (playerNames: string[], aiEnabled: boolean): GameS
     isAiThinking: false,
   };
 
-  // Init rows: 4 rows, 3 cards each. 
-  // STRICT RULE: Each row must have 3 DIFFERENT species. 
   for (let i = 0; i < ROW_COUNT; i++) {
       const currentRow: BirdType[] = [];
       while (currentRow.length < INITIAL_ROW_CARDS) {
           const card = drawCard(initialState);
           if (!card) break; 
-
-          // Strict check: Is this species ALREADY in this specific row?
           if (currentRow.includes(card)) {
               initialState.discardPile.push(card);
           } else {
@@ -99,7 +86,6 @@ export const initializeGame = (playerNames: string[], aiEnabled: boolean): GameS
   initialState.players = players;
   dealHands(initialState);
 
-  // Initial Collection (1 free bird each)
   initialState.players.forEach(p => {
       const startBird = drawCard(initialState);
       if (startBird) {
@@ -110,15 +96,13 @@ export const initializeGame = (playerNames: string[], aiEnabled: boolean): GameS
   return initialState;
 };
 
-// Official Rule: End of turn refill.
 const ensureRowValidity = (row: BirdType[], state: GameState) => {
     let safety = 0;
     while (safety < 20) { 
         const uniqueSpecies = new Set(row);
-        if (uniqueSpecies.size >= 2) break; // Valid
-        
+        if (uniqueSpecies.size >= 2) break; 
         const card = drawCard(state);
-        if (!card) break; // Deck empty
+        if (!card) break; 
         row.push(card);
         safety++;
     }
@@ -127,12 +111,10 @@ const ensureRowValidity = (row: BirdType[], state: GameState) => {
 export const checkWinCondition = (player: Player): boolean => {
   const speciesCount = Object.keys(player.collection).length;
   if (speciesCount >= 7) return true;
-
   let speciesWithThreeOrMore = 0;
   Object.values(player.collection).forEach(count => {
     if ((count || 0) >= 3) speciesWithThreeOrMore++;
   });
-
   return speciesWithThreeOrMore >= 2;
 };
 
@@ -149,28 +131,21 @@ export const getFlockableCount = (player: Player): number => {
     return options;
 };
 
-// Handle end of round (when a player empties hand)
 const handleRoundEnd = (state: GameState, finisherIndex: number) => {
     state.lastActionLog.push(`🔄 Round Over! ${state.players[finisherIndex].name} emptied hand.`);
-    
-    // Discard all hands
     state.players.forEach((p) => {
         if (p.hand.length > 0) {
             state.discardPile.push(...p.hand);
             p.hand = [];
         }
     });
-
-    // Deal new hands
     dealHands(state);
-
     state.currentPlayerIndex = (finisherIndex + 1) % state.players.length;
     state.turnPhase = TurnPhase.PLAY;
 };
 
-// Core move logic
 export const applyMove = (state: GameState, move: GameMove): MoveOutcome => {
-  const newState = JSON.parse(JSON.stringify(state)) as GameState; // Deep copy
+  const newState = JSON.parse(JSON.stringify(state)) as GameState; 
   const player = newState.players[newState.currentPlayerIndex];
   
   const outcome: MoveOutcome = {
@@ -220,7 +195,6 @@ export const applyMove = (state: GameState, move: GameMove): MoveOutcome => {
     outcome.flockedAmount = bankAmount;
     outcome.message = `${player.name} flocked ${move.birdType}s (Banked ${bankAmount}).`;
     outcome.isValid = true;
-    
     newState.lastActionLog.push(outcome.message);
     
     if (checkWinCondition(player)) {
@@ -233,7 +207,6 @@ export const applyMove = (state: GameState, move: GameMove): MoveOutcome => {
     if (player.hand.length === 0) {
          handleRoundEnd(newState, player.id);
     } else {
-        // Flocking ends turn
         newState.currentPlayerIndex = (newState.currentPlayerIndex + 1) % newState.players.length;
         newState.turnPhase = TurnPhase.PLAY;
         newState.lastActionLog.push(`${player.name} ended turn.`);
@@ -249,10 +222,8 @@ export const applyMove = (state: GameState, move: GameMove): MoveOutcome => {
     const cardsToPlay = player.hand.filter(b => b === move.birdType);
     if (cardsToPlay.length === 0) return outcome;
 
-    // 1. Remove from hand
     player.hand = player.hand.filter(b => b !== move.birdType);
     
-    // 2. Add to Row
     const row = newState.rows[move.rowIndex];
     if (move.side === 'LEFT') {
       row.unshift(...cardsToPlay);
@@ -260,19 +231,14 @@ export const applyMove = (state: GameState, move: GameMove): MoveOutcome => {
       row.push(...cardsToPlay);
     }
 
-    // 3. CAPTURE LOGIC
     let captured: BirdType[] = [];
-    
     if (move.side === 'LEFT') {
       const searchStartIndex = cardsToPlay.length;
       const matchIndex = row.slice(searchStartIndex).findIndex(b => b === move.birdType);
-      
       if (matchIndex !== -1) {
           const absoluteMatchIndex = searchStartIndex + matchIndex;
           const deleteCount = absoluteMatchIndex - searchStartIndex;
-          if (deleteCount > 0) {
-              captured = row.splice(searchStartIndex, deleteCount);
-          }
+          if (deleteCount > 0) captured = row.splice(searchStartIndex, deleteCount);
       }
     } else {
       const originalLen = row.length - cardsToPlay.length;
@@ -286,9 +252,7 @@ export const applyMove = (state: GameState, move: GameMove): MoveOutcome => {
       if (matchIndex !== -1) {
           const startIndex = matchIndex + 1;
           const deleteCount = originalLen - startIndex;
-          if (deleteCount > 0) {
-              captured = row.splice(startIndex, deleteCount);
-          }
+          if (deleteCount > 0) captured = row.splice(startIndex, deleteCount);
       }
     }
 
@@ -298,20 +262,16 @@ export const applyMove = (state: GameState, move: GameMove): MoveOutcome => {
       outcome.captured = captured;
       outcome.message = `${player.name} played ${move.birdType}, captured ${captured.length}.`;
     } else {
-      // NO CAPTURE - OFFICIAL RULE: MANDATORY DRAW 2
       let drawnCount = 0;
       const c1 = drawCard(newState);
       if(c1) { player.hand.push(c1); drawnCount++; }
       const c2 = drawCard(newState);
       if(c2) { player.hand.push(c2); drawnCount++; }
       player.hand.sort();
-      
       outcome.drawn = drawnCount;
       outcome.message = `${player.name} played ${move.birdType}, no capture. Drew ${drawnCount} cards.`;
     }
 
-    // Check Round End: Only if hand is empty NOW
-    // Note: If they drew cards, hand is not empty. If they played last card and captured, hand might not be empty.
     if (player.hand.length === 0) {
         handleRoundEnd(newState, player.id);
     } else {

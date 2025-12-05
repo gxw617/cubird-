@@ -19,6 +19,7 @@ export interface BirdConfig {
   color: string;
   emoji: string;
   imgUrl: string;
+  spritePos?: string; // CSS background-position for sprite sheet
 }
 
 export interface Player {

@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { GameState, MoveType, BirdType, GameMove, MoveOutcome, TurnPhase } from './types';
 import { initializeGame, applyMove, getFlockableCount } from './services/gameLogic';
@@ -205,7 +204,7 @@ const App: React.FC = () => {
                 side: aiMove.side
             } : {
                 type: MoveType.PLAY,
-                birdType: randomBird || BirdType.PARROT,
+                birdType: randomBird || BirdType.SPARROW, // FALLBACK UPDATED
                 rowIndex: Math.floor(Math.random() * 4),
                 side: 'LEFT'
             });
@@ -253,20 +252,17 @@ const App: React.FC = () => {
     }
   }, [gameState, executeAiTurn]);
 
-  // Determine whose hand to show at the bottom
+  // Determine whose hand to show
   let humanPlayer = null;
   if (gameState) {
       if (isOnlineGame) {
           humanPlayer = gameState.players[myPlayerId];
       } else {
-          // Local Pass & Play: Always show the active player (Hotseat)
           const current = gameState.players[gameState.currentPlayerIndex];
           if (current.isAi) {
-              // If AI turn, show Human P1
-              humanPlayer = gameState.players[0];
+              humanPlayer = gameState.players[0]; // If AI turn, show Human P1
           } else {
-              // Human turn (P1 or P2 in Pass&Play), show active player
-              humanPlayer = current;
+              humanPlayer = current; // Pass & Play: Show Current Active
           }
       }
   }
@@ -313,11 +309,9 @@ const App: React.FC = () => {
     if (outcome.captured.length > 0) {
         playSound('whoosh');
         playSound('capture');
-    } else if (outcome.drawn > 0) {
-        playSound('draw');
-    } else {
-        playSound('pop');
     }
+    else if (outcome.drawn > 0) playSound('draw');
+    else playSound('pop');
 
     syncMove(outcome.newState);
     setSelectedBird(null);
@@ -339,6 +333,7 @@ const App: React.FC = () => {
   };
 
   if (!gameState || onlineMenuState !== 'NONE') {
+    // Menu (Same as before)
     return (
       <div className="min-h-screen flex flex-col items-center justify-center bg-stone-100 p-4 font-sans text-stone-800">
         <h1 className="text-6xl md:text-8xl font-black text-transparent bg-clip-text bg-gradient-to-br from-stone-600 to-amber-700 mb-2 drop-shadow-sm tracking-tighter">CUBIRDS</h1>
@@ -466,6 +461,7 @@ const App: React.FC = () => {
       
       {viewBoardMode && (<div className="fixed top-4 right-4 z-[90]"><button onClick={() => setViewBoardMode(false)} className="bg-stone-800 text-white px-6 py-3 rounded-full font-bold shadow-xl animate-bounce">Back to Results 🏆</button></div>)}
 
+      {/* Human Player Area */}
       {humanPlayer && (
         <div className="transition-all duration-300">
             <PlayerArea 
